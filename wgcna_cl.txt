@@ -1,0 +1,388 @@
+#############################cl
+##prepare:
+
+setwd('F://畜牧所数据//51_samples_ave_cor_0.9//cluster//protein_coding_gene//icsi_within_group_deg//wgcna') 
+library(WGCNA)
+library(pheatmap)
+library(gplots)
+options(stringsAsFactors = FALSE)
+fpkm_cl<-read.table("AE_FPKM_3.txt",header=TRUE)
+#fpkm_cl<-unique(fpkm_cl)
+rownames(fpkm_cl)=fpkm_cl[,1] 
+fpkm_cl=fpkm_cl[,-1]
+datatraits_cl<-read.table("datatriate.txt",header=TRUE)
+rownames(datatraits_cl)=datatraits_cl[,1]
+
+#heatmap
+x<- as.matrix(fpkm_cl[1:100,])
+heatmap.2(x,dendrogram = "none",trace = "none",density.info="none",Colv=FALSE,scale = "row",
+          key = T,cexRow=0.1,cexCol=0.2,offsetRow=0,offsetCol=0,col=colorRampPalette(c("green", "black", "red"))(100))
+
+## step 1 : 输入数据的准备
+if(T){
+  
+  fpkm_cl[1:4,1:4]
+  head(datatraits_cl)
+  
+  RNAseq_voom <- fpkm_cl 
+  ## 因为WGCNA针对的是基因进行聚类，而一般我们的聚类是针对样本用hclust即可，所以这个时候需要转置
+  WGCNA_matrix = t(RNAseq_voom[order(apply(RNAseq_voom,1,mad), decreasing = T),])  #[1:10000]在“T)”后表示取前10000个转录本
+  write.table(WGCNA_matrix, "top2000_mrna.txt",row.names=FALSE)
+  datExpr0 <- WGCNA_matrix  ## top 5000 mad genes
+  datExpr <- datExpr0 
+  
+  ## 下面主要是为了防止临床表型与样本名字对不上
+  sampleNames = rownames(datExpr);
+  traitRows = match(sampleNames, datatraits_cl$sample)
+  rownames(datatraits_cl) = datatraits_cl[traitRows, 1]
+  
+}
+
+
+## step 2 确定最佳beta值
+if(T){
+  powers = c(c(1:10), seq(from = 12, to=20, by=2))
+  # Call the network topology analysis function
+  sft = pickSoftThreshold(datExpr, powerVector = powers, verbose = 5)
+  #设置网络构建参数选择范围，计算无尺度分布拓扑矩阵
+  png("step2-beta-value.png",width = 800,height = 600)
+  # Plot the results:
+  ##sizeGrWindow(9, 5)
+  par(mfrow = c(1,2));
+  cex1 = 0.9;
+  # Scale-free topology fit index as a function of the soft-thresholding power
+  plot(sft$fitIndices[,1], -sign(sft$fitIndices[,3])*sft$fitIndices[,2],
+       xlab="Soft Threshold (power)",ylab="Scale Free Topology Model Fit,signed R^2",type="n",
+       main = paste("Scale independence"));
+  text(sft$fitIndices[,1], -sign(sft$fitIndices[,3])*sft$fitIndices[,2],
+       labels=powers,cex=cex1,col="red");
+  # this line corresponds to using an R^2 cut-off of h
+  abline(h=0.90,col="red")
+  # Mean connectivity as a function of the soft-thresholding power
+  plot(sft$fitIndices[,1], sft$fitIndices[,5],
+       xlab="Soft Threshold (power)",ylab="Mean Connectivity", type="n",
+       main = paste("Mean connectivity"))
+  text(sft$fitIndices[,1], sft$fitIndices[,5], labels=powers, cex=cex1,col="red")
+  dev.off()
+}
+
+## step3 一步法构建共表达矩阵
+
+if(T){
+  net = blockwiseModules(
+    datExpr,
+    power = sft$powerEstimate,
+    maxBlockSize = 10000,
+    TOMType = "unsigned", minModuleSize = 50,
+    reassignThreshold = 0, mergeCutHeight = 0.25,
+    numericLabels = TRUE, pamRespectsDendro = FALSE,
+    saveTOMs = TRUE,
+    saveTOMFileBase = "AS-green-FPKM-TOM",
+    verbose = 3
+  )
+  table(net$colors) 
+}
+
+
+## step 4  模块可视化
+if(T){
+  
+  # Convert labels to colors for plotting
+  mergedColors = labels2colors(net$colors)
+  table(mergedColors)
+  moduleColors=mergedColors
+  # Plot the dendrogram and the module colors underneath
+  png("step4-genes-modules.png",width = 800,height = 600)
+  #pdf(file="11.pdf") cl
+  plotDendroAndColors(net$dendrograms[[1]], mergedColors[net$blockGenes[[1]]],
+                      "Module colors",
+                      dendroLabels = FALSE, hang = 0.03,
+                      addGuide = TRUE, guideHang = 0.05)
+  dev.off()
+  ## assign all of the gene to their corresponding module 
+  ## hclust for the genes.
+}
+
+if(F){
+  #明确样本数和基因
+  nGenes = ncol(datExpr)
+  nSamples = nrow(datExpr)
+  #首先针对样本做个系统聚类
+  datExpr_tree<-hclust(dist(datExpr), method = "average")
+  par(mar = c(0,5,2,0))
+  plot(datExpr_tree, main = "Sample clustering", sub="", xlab="", cex.lab = 2, 
+       cex.axis = 1, cex.main = 1,cex.lab=1)
+  ## 如果这个时候样本是有性状，或者临床表型的，可以加进去看看是否聚类合理
+  #针对前面构造的样品矩阵添加对应颜色
+  sample_colors <- numbers2colors(as.numeric(factor(datatraits_cl$subtype)), 
+                                  colors = c("white","blue","red","green"),signed = FALSE)
+  ## 这个给样品添加对应颜色的代码需要自行修改以适应自己的数据分析项目
+  #  sample_colors <- numbers2colors( datTraits ,signed = FALSE)
+  ## 如果样品有多种分类情况，而且 datTraits 里面都是分类信息，那么可以直接用上面代码，当然，这样给的颜色不明显，意义不大
+  #10个样品的系统聚类树及性状热图
+  par(mar = c(1,4,3,1),cex=0.8)
+  
+  png("sample-subtype-cluster.png",width = 800,height = 600)
+  plotDendroAndColors(datExpr_tree, sample_colors,
+                      groupLabels = colnames(sample),
+                      cex.dendroLabels = 0.8,
+                      marAll = c(1, 4, 3, 1),
+                      cex.rowText = 0.01,
+                      main = "Sample dendrogram and trait heatmap")
+  dev.off()
+}
+
+## step 5  模块和性状的关系
+## 这一步主要是针对于连续变量，如果是分类变量，需要转换成连续变量方可使用
+if(T){
+  nGenes = ncol(datExpr)
+  nSamples = nrow(datExpr)
+  design=model.matrix(~0+ datatraits_cl$subtype)
+  #colnames(design)=levels(datatraits_cl$subtype)
+  design=as.data.frame(design)
+  moduleColors <- labels2colors(net$colors)
+  # Recalculate MEs with color labels
+  MEs0 = moduleEigengenes(datExpr, moduleColors)$eigengenes
+  MEs = orderMEs(MEs0); ##不同颜色的模块的ME值矩 (样本vs模块)
+  moduleTraitCor = cor(MEs, design , use = "p");
+  moduleTraitPvalue = corPvalueStudent(moduleTraitCor, nSamples)
+  
+  sizeGrWindow(10,6)
+  # Will display correlations and their p-values
+  textMatrix = paste(signif(moduleTraitCor, 2), "\n(",
+                     signif(moduleTraitPvalue, 1), ")", sep = "");
+  dim(textMatrix) = dim(moduleTraitCor)
+  #png("step5-Module-trait-relationships.png",width = 800,height = 1200,res = 120)
+  pdf(file="step5-Module-trait-relationships.pdf")
+  par(mar = c(6, 8.5, 3, 3));
+  # Display the correlation values within a heatmap plot
+  labeledHeatmap(Matrix = moduleTraitCor,
+                 xLabels = names(design),
+                 #xSymbols = names(design),
+                 yLabels = names(MEs),
+                 ySymbols = names(MEs),
+                 yColorWidth = 0.01, #cl
+                 colorLabels = FALSE,
+                 colors = blueWhiteRed(50),
+                 textMatrix = textMatrix,
+                 setStdMargins = FALSE,
+                 cex.text = 0.5, #cl
+                 cex.lab.y = 0.8,
+                 zlim = c(-1,1),
+                 main = paste("Module-trait relationships"))
+  dev.off()
+}
+
+
+## step 6  感兴趣性状的模块的具体基因分析
+
+if(T){
+  # names (colors) of the modules
+  modNames = substring(names(MEs), 3)
+  geneModuleMembership = as.data.frame(cor(datExpr, MEs, use = "p"));
+  ## 算出每个模块跟基因的皮尔森相关系数矩
+  ## MEs是每个模块在每个样本里面的
+  ## datExpr是每个基因在每个样本的表达量
+  MMPvalue = as.data.frame(corPvalueStudent(as.matrix(geneModuleMembership), nSamples));
+  names(geneModuleMembership) = paste("MM", modNames, sep="");
+  names(MMPvalue) = paste("p.MM", modNames, sep="");
+  
+  ## 只有连续型性状才能只有计算
+  ## 这里把是否属 Luminal 表型这个变量0,1进行数值化
+  Landrace = as.data.frame(design[,3]);  #注意design具体的分组情况
+  names(Landrace) = "L"
+  geneTraitSignificance = as.data.frame(cor(datExpr, Landrace, use = "p"));
+  GSPvalue = as.data.frame(corPvalueStudent(as.matrix(geneTraitSignificance), nSamples));
+  names(geneTraitSignificance) = paste("GS.", names(Landrace), sep="");
+  names(GSPvalue) = paste("p.GS.", names(Landrace), sep="");
+  
+  
+  
+  module = "brown"
+  column = match(module, modNames);
+  moduleGenes = moduleColors==module;
+  png("step6-Module_membership-gene_significance.png",width = 800,height = 600)
+  #sizeGrWindow(7, 7);
+  par(mfrow = c(1,1));
+  verboseScatterplot(abs(geneModuleMembership[moduleGenes, column]),
+                     abs(geneTraitSignificance[moduleGenes, 1]),
+                     xlab = paste("Module Membership in", module, "module"),
+                     ylab = "Gene significance for day60",
+                     main = paste("Module membership vs. gene significance\n"),
+                     cex.main = 1.2, cex.lab = 1.2, cex.axis = 1.2, col = module)
+  dev.off()
+  
+}
+
+
+## step 7  网络的可视化
+if(T){
+  ## 首先针对所有基因画热图
+  nGenes = ncol(datExpr)
+  nSamples = nrow(datExpr)
+  geneTree = net$dendrograms[[1]]; 
+  dissTOM = 1-TOMsimilarityFromExpr(datExpr, power = 14); 
+  plotTOM = dissTOM^14;  #留意power值
+  diag(plotTOM) = NA; 
+  #TOMplot(plotTOM, geneTree, moduleColors, main = "Network heatmap plot, all genes")
+  
+  ## 然后随机选取部分基因作图 
+  nSelect = 4000
+  # For reproducibility, we set the random seed
+  set.seed(10);
+  select = sample(nGenes, size = nSelect);
+  selectTOM = dissTOM[select, select];
+  # There’s no simple way of restricting a clustering tree to a subset of genes, so we must re-cluster.
+  selectTree = hclust(as.dist(selectTOM), method = "average")
+  selectColors = moduleColors[select];
+  # Open a graphical window
+  sizeGrWindow(9,9)
+  # Taking the dissimilarity to a power, say 10, makes the plot more informative by effectively changing
+  # the color palette; setting the diagonal to NA also improves the clarity of the plot
+  plotDiss = selectTOM^14;  #留意power值
+  diag(plotDiss) = NA;
+  
+  png("step7-Network-heatmap.png",width = 800,height = 600)
+  TOMplot(plotDiss, selectTree, selectColors, main = "Network heatmap plot, selected genes")
+  dev.off()
+  
+  ## 最后画模块和性状的关系
+  # Recalculate module eigengenes
+  MEs = moduleEigengenes(datExpr, moduleColors)$eigengenes
+  ## 只有连续型性状才能只有计算
+  ## 这里把是否属 Luminal 表型这个变量0,1进行数值化
+  Landrace = as.data.frame(design[,3]);
+  names(Landrace) = "Landrace"
+  # Add the weight to existing module eigengenes
+  MET = orderMEs(cbind(MEs, Landrace))
+  # Plot the relationships among the eigengenes and the trait
+  sizeGrWindow(5,7.5);
+  
+  par(cex = 0.9)
+  png("step7-Eigengene-dendrogram.png",width = 800,height = 600)
+  plotEigengeneNetworks(MET, "", marDendro = c(0,4,1,2), marHeatmap = c(3,4,1,2), cex.lab = 0.8, 
+                        xLabelsAngle= 90)
+  dev.off()
+  
+  # Plot the dendrogram
+  sizeGrWindow(6,6);
+  par(cex = 1.0)
+  ## 模块的进化树
+  png("step7-Eigengene-dendrogram-hclust.png",width = 800,height = 600)
+  plotEigengeneNetworks(MET, "Eigengene dendrogram", marDendro = c(0,4,2,0),
+                        plotHeatmaps = FALSE)
+  dev.off()
+  # Plot the heatmap matrix (note: this plot will overwrite the dendrogram plot)
+  par(cex = 1.0)
+  ## 性状与模块热
+  
+  png("step7-Eigengene-adjacency-heatmap.png",width = 800,height = 600)
+  plotEigengeneNetworks(MET, "Eigengene adjacency heatmap", marHeatmap = c(3,4,2,2),
+                        plotDendrograms = FALSE, xLabelsAngle = 90)
+  dev.off()
+  
+}
+
+## step 8 
+if(T){
+  # Select module
+  module = "MEbrown";
+  # Select module probes
+  probes = colnames(datExpr) ## 我们例子里面的probe就是基因
+  inModule = (moduleColors==module);
+  modProbes = probes[inModule]; 
+}
+
+## step 9 
+if(T){
+  # Recalculate topological overlap
+  TOM = TOMsimilarityFromExpr(datExpr, power = 9); 
+  # Select module
+  module = "grey";
+  # Select module probes
+  probes = colnames(datExpr) ## 我们例子里面的probe就是基因
+  inModule = (moduleColors==module);
+  modProbes = probes[inModule]; 
+  ## 也是提取指定模块的基因名
+  # Select the corresponding Topological Overlap
+  modTOM = TOM[inModule, inModule];
+  dimnames(modTOM) = list(modProbes, modProbes)
+  ## 模块对应的基因关系矩
+  cyt = exportNetworkToCytoscape(
+    modTOM,
+    edgeFile = paste("CytoscapeInput-edges-", paste(module, collapse="-"), ".txt", sep=""),
+    nodeFile = paste("CytoscapeInput-nodes-", paste(module, collapse="-"), ".txt", sep=""),
+    weighted = TRUE,
+    threshold = 0.02,
+    nodeNames = modProbes, 
+    nodeAttr = moduleColors[inModule]
+  );
+}
+
+
+table(net$colors) 
+#module_name_1 = t(as.matrix(names(MEs)))
+module_name = substring(names(MEs), 3) 
+probes = colnames(datExpr)
+#inModule = (moduleColors==module_name_2[15])
+#modProbes = probes[inModule]
+#modProbes
+#fpkm_cl[modProbes,]
+#fpkm_cl[modProbes,][1,1:3]
+
+pdf(file="heatmap3.pdf")
+#par(mfrow = c(2,2))
+for (i in 1:(length(module_name))) {
+  
+  if (module_name[i] != "grey") {
+    inModule = (moduleColors==module_name[i])
+    #modProbes = probes[inModule]
+    module_gene = probes[inModule]
+    module_fpkm = fpkm_cl[module_gene,]
+    fpkm_name = paste(module_name[i],"_gene_fpkm.txt",sep = "")
+    write.table(module_fpkm,fpkm_name,sep="\t",quote=F)
+    
+    average_module_fpkm = matrix(NA,nrow(module_fpkm),4)
+    rownames(average_module_fpkm) <- rownames(module_fpkm)
+    colnames(average_module_fpkm) <- cbind("Dapulian","Duroc_Landrace_Dapulian","Landrace","Landrace_Dapulian")
+    for (j in 1:length(module_gene)) {
+      Dapulian_ave_fpkm = sum(module_fpkm[j,1:8])/8
+      Duroc_Landrace_Dapulian_ave_fpkm = sum(module_fpkm[j,9:16])/8
+      Landrace_ave_fpkm = sum(module_fpkm[j,17:24])/8
+      Landrace_Dapulian_ave_fpkm = sum(module_fpkm[j,25:32])/8
+      average_module_fpkm[j,1] = Dapulian_ave_fpkm
+      average_module_fpkm[j,2] = Duroc_Landrace_Dapulian_ave_fpkm
+      average_module_fpkm[j,3] = Landrace_ave_fpkm
+      average_module_fpkm[j,4] = Landrace_Dapulian_ave_fpkm
+    }
+    ave_fpkm_name = paste(module_name[i],"_gene_average_fpkm.txt",sep = "")
+    write.table(average_module_fpkm,ave_fpkm_name,sep="\t",quote=F)
+    
+    x<- as.matrix(average_module_fpkm)
+    heatmap.2(x,dendrogram = "none",trace = "none",density.info="none",Colv=FALSE,scale = "row",xlab = module_name[i],
+              key = T,cexRow=0.1,cexCol=0.5,offsetRow=0,offsetCol=0,col=colorRampPalette(c("green", "black", "red"))(100))
+    
+    stage_gene_ave_fpkm = matrix(NA,1,4)
+    #rownames(stage_gene_ave_fpkm) <- "average"
+    #colnames(stage_gene_ave_fpkm) <- cbind("Dapulian","Duroc_Landrace_Dapulian","Landrace","Landrace_Dapulian")
+    stage_gene_ave_fpkm[1,1]=log(sum((average_module_fpkm[,1]))/(length(module_gene)),2)
+    stage_gene_ave_fpkm[1,2]=log(sum((average_module_fpkm[,2]))/(length(module_gene)),2)
+    stage_gene_ave_fpkm[1,3]=log(sum((average_module_fpkm[,3]))/(length(module_gene)),2)
+    stage_gene_ave_fpkm[1,4]=log(sum((average_module_fpkm[,4]))/(length(module_gene)),2)
+    
+    stage_ave = c(stage_gene_ave_fpkm[1,1],stage_gene_ave_fpkm[1,2],stage_gene_ave_fpkm[1,3],stage_gene_ave_fpkm[1,4]
+    )
+    plot(stage_ave,xlab = module_name[i], type = "l")
+  }
+}
+dev.off()
+
+
+for (i in 1:(length(module_name))) {
+  if (module_name[i] != "brown") {
+    print (module_name[i])
+    inModule = (moduleColors==module_name[i])
+    modProbes = probes[inModule]
+    module_gene = probes[inModule]
+    print (length(module_gene))
+  }}

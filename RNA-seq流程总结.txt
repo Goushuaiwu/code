@@ -1,0 +1,1667 @@
+知识总结:
+1、DEG基因用的是Unigene不是Transcripts一个Unigene可能对应多个转录本。
+2、Transcript id：为组装转录本编号；gene_id：Unigene编号；length：Unigene的长度；effective_length：各个转录本的平均长度；
+3、TPM：Transcripts per million，公式为：Unigene 的reads数×10^6/总reads数；FPKM即RPKM（双端Reads数目/（比对到转录本上的片段总数*转录本长度））
+3、两两比对使用的是R的EBseq包, 是基于负二项分布检验的方式对reads数进行差异显著性检验，重复间的比对使用的是R的DEseq包，是基于分层贝叶斯模型的原理对组合内样品进行分析
+4、评价建库情况一般情况下外显子区域所占比例超过70%即比较理想
+5、测序得到的lncRNA，如何知道哪些是已知的？哪些是未知的？根据fa序列进行比对，对预测出的lncRNA序列与数据库中已知的lncRNA序列比对，达到一定比对值的会认为该预测长链是已知的长链
+
+学习方法：百度输入问题，查看相关博客、简书、慕课网、网易云课堂、腾讯课堂、学堂在线、知乎及B站等
+这套流程中涉及了Linux的基本指令，R的基本指令，正则表达式，awk指令，具体整套RNA-seq流程文献中有介绍
+
+注意：在shell上输入命令和文件名等等，命令之间需要有空格，就像英语每个单词之间有空格，书写格式要求
+
+1.软件有什么问题不知道可以在终端中输入 -h 主要还是上网找相关软件的博客阅读学习，或者在软件官网中找manual来阅读，这个是最权威的。
+例如$stringtie -h
+2.samtools view 文件名 | less 来查看Sam和bam文件
+4.后台运行 nohup 指令 &  注意指令的前后不用加双引号 ""查看后台运行状况 命令qstat -a。
+ 5.查看文件内容方法 先cd到文件所在的目录下 之后 "head -n 10 文件名"查看文件前10行内容
+6.wc -l *.gtf      在cd的目录中查看gtf格式的文件
+  wc -l */*.gtf    cd到gtf文件所在的前一个大目录下，查看大目录下若干个包含目标gtf的子文件中的gtf文件的行数，
+  以上两个指令可用在定量步骤查看结果文件行数
+ 7.在R中会发现有许多我们未来需要的包是安装不了的，这个时候可以借助下面的指令来进行下载，
+  source("https://bioconductor.org/biocLite.R")
+biocLite("ballgown")
+  如果这个指令不能成功可以点击下面这个网页中的指令来尝试下载，一般问题是可以解决的
+  https://my.oschina.net/u/3722845/blog/1803143
+R软件3.5以后版本用下面命令安装包，去网上搜
+
+
+2020年7月1日
+#查找并下载RNAseq数据方法
+首先打开NCBI，将检索词改为SRA,在输入框内输入关键词"RNAseq sus"
+例如我们现在需要下载这套数据 
+1、打开网址https://www.ncbi.nlm.nih.gov/Traces/study/?acc=SRP192808&o=acc_s%3Aa可以看到一整套数据，
+2、将Accession框里的SRP号如SRP192808放入NCBI的SRA选项，search以下，页面如下：https://www.ncbi.nlm.nih.gov/sra/?term=SRP192808
+   点击右下角的 send to 选项，选择file，选择下拉菜单的format选项中的runinfo，最后点击create file，下载文件到本地指定位置
+3、打开文件，将其中的下载地址复制到新建word文件中，之后保存为txt（注意制表符的那个txt）格式，命名SRR_Acc_list.txt ，
+     新建文件夹名为raw_data，再将这个txt文件上传到服务器自己的文件夹中
+4、最后在终端输入命令 wget -i srr_list.txt 完成数据的下载  (我是一个文件一个下载的，如下：)
+    wget    https://sra-downloadb.be-md.ncbi.nlm.nih.gov/sos2/sra-pub-run-9/SRR4173985/SRR4173985.1
+   "wget -c 网址"    表示断掉后自动连接
+    "wget -b 网址"    表示在后台运行
+注意；还有几种下载方法，去网上搜
+1、利用sratoolkit中的prefetch下载：
+/home/liuyuxia/sratoolkit/sratoolkit.2.9.6-centos_linux64/bin/prefetch --option-file sra_list.txt
+
+#转换数据的格式
+下载好的数据需要转换成fastq.gz格式的文件，采用以下脚本去转化文件格式
+脚本zhaowenjuan_fastq-dump_3.sh内容如下：
+
+#!/bin/sh
+#PBS -N fastq_dump
+#PBS -l nodes=1:ppn=4
+#PBS -l mem=1gb
+#PBS -q batch
+
+# echo start at time `date +%F'  '%H:%M`
+
+cd   /public/home/ccli/zhaowenjuan/shuju/rawdata1
+
+sqsub -j fastq_dump_0 -t 4 -c "fastq-dump.2.8.0 --split-3 --gzip SRR10462000"
+
+sqsub -j fastq_dump_1 -t 4 -c "fastq-dump.2.8.0 --split-3 --gzip SRR10462001"
+
+sqsub -j fastq_dump_2 -t 4 -c "fastq-dump.2.8.0 --split-3 --gzip SRR10462002"
+
+sqsub -j fastq_dump_3 -t 4 -c "fastq-dump.2.8.0 --split-3 --gzip SRR10462003"
+
+sqsub -j fastq_dump_4 -t 4 -c "fastq-dump.2.8.0 --split-3 --gzip SRR10462004"
+
+sqsub -j fastq_dump_5 -t 4 -c "fastq-dump.2.8.0 --split-3 --gzip SRR10462005"
+
+sqsub -j fastq_dump_6 -t 4 -c "fastq-dump.2.8.0 --split-3 --gzip SRR10462006"
+
+sqsub -j fastq_dump_7 -t 4 -c "fastq-dump.2.8.0 --split-3 --gzip SRR10462007"
+
+# echo finish at time `date +%F'  '%H:%M`
+
+内容解释：
+#cd  $PBS_O_WORKDIR 代表自己的PBS路径
+#fastq-dump_1  指跑出的结果文件命名，记得不要命名重复
+#fastq-dump.2.6.2 指软件，服务器可以自动搜索到所在位置
+#-3   表示双端测序
+结果：一个SRR10461998文件会跑出两个文件， 代表一个样本的reads1和reads2，如下：
+SRR10461998_1.fastq.gz
+SRR10461998_2.fastq.gz
+
+一、数据质控（质量分数评估）
+FastQC
+软件网址：http://www.bioinformatics.babraham.ac.uk/projects/fastqc/
+目的：对raw data 进行质量评分，筛选出含基因、转录本、表达水平的列表
+通常情况下可直接在服务器上输入以下格式运行：
+fastqc 文件名  如   SRR10461998_1.fastq.gz或SRR10461998_2.fastq.gz看一下数据质量，之后可以开始进行数据的过滤
+ 同时质控几个文件时输入以下命令"fastqc  xxx_1.fastq.gz  xxx_2.fastq.gz" 或者   *.fastq ,比较方便
+
+注意：这种情况是在管理节点运行，服务器管理员发出警告，不建议此操作，一般采用脚本形式，将几个样本位置名称放入脚本中：qsub 脚本名称
+
+质控输出两个结果包含：一个压缩文件zip，一个网址html
+打开一个网页链接，就是样本的质控报告，内容有样本名称、文件类型、测序平台、数据长度、GC含量
+总的reads数，例如32943665大于30M（这个要记着写在文章中）
+指控的确是对号越多越好，但是我们后续是重要参考依据
+还是之后hisat2的唯一比对率，一般要70%以上才是合格的。
+
+
+#数据的过滤
+目的：过滤掉低质量的reads数
+新建文件夹名称trimmomatic,将以下脚本放入文件夹中，
+脚本zhaowenjuan_trimmomatic2部分内容如下：
+#!/bin/sh
+#PBS -N trimmomatic
+#PBS -l nodes=1:ppn=4
+#PBS -l mem=1gb
+#PBS -q batch
+
+echo start at time `date +%F'  '%H:%M`
+
+cd  /public/home/ccli/zhaowenjuan/2/trimmomatic
+ 
+sqsub -j d1cros-1 -t 4 -c "java -jar /public/home/ccli/yhfu/01software/Trimmomatic-0.36/trimmomatic.jar PE -threads 4 \
+/public/home/ccli/zhaowenjuan/shuju/rawdata2/SRR4173985.1_1.fastq.gz /public/home/ccli/zhaowenjuan/shuju/rawdata2/SRR4173985.1_2.fastq.gz \
+ d1cros-1_1_clean.fq.gz d1cros-1_1_unpair.fq.gz d1cros-1_2_clean.fq.gz d1cros-1_2_unpair.fq.gz \
+ ILLUMINACLIP:/public/home/ccli/yhfu/01software/Trimmomatic-0.36/adapters/TruSeq2-PE.fa:2:30:10 \
+ SLIDINGWINDOW:4:15 HEADCROP:9"
+
+sqsub -j d1cros-2 -t 4 -c "java -jar /public/home/ccli/yhfu/01software/Trimmomatic-0.36/trimmomatic.jar PE -threads 4 \
+/public/home/ccli/zhaowenjuan/shuju/rawdata2/SRR4173986.1_1.fastq.gz /public/home/ccli/zhaowenjuan/shuju/rawdata2/SRR4173986.1_2.fastq.gz \
+ d1cros-2_1_clean.fq.gz d1cros-2_1_unpair.fq.gz d1cros-2_2_clean.fq.gz d1cros-2_2_unpair.fq.gz \
+ ILLUMINACLIP:/public/home/ccli/yhfu/01software/Trimmomatic-0.36/adapters/TruSeq2-PE.fa:2:30:10 \
+ SLIDINGWINDOW:4:15 HEADCROP:9"
+ 
+echo finish at time `date +%F'  '%H:%M`
+
+# java -jar  没查
+# /public/home/ccli/yhfu/01software/Trimmomatic-0.36/trimmomatic.jar  trimmomatic软件路径
+# PE  代表双端测序paired end  SE 代表单端测序single end
+# -threads 4 设置多线程运行数
+# /public/home/ccli/zhaowenjuan/shuju/rawdata2/SRR4173985.1_1.fastq.gz  样本read1的位置，后面是read2的位置
+# SRR5651381_1_clean.fq.gz SRR5651381_1_unpair.fq.gz  表示输出clean reads名称（需要的）和unpaired reads 名称(不符合的)
+# ILLUMINACLIP:/public/home/ccli/yhfu/01software/Trimmomatic-0.36/adapters/TruSeq2-PE.fa:2:30:10 \
+# SLIDINGWINDOW:4:15 HEADCROP:9  切除adapter序列，后面为adapter序列的fasta文件，允许的最大mismatch数，palindrome模式下匹配碱基数阈值等，不需要做详细了解
+#SLIDINGWINDOW:4:15代表从5’端开始进行滑动，当滑动位点周围一段序列的平均碱基低于阈值，则从该处进行切除，等等
+#HEADCROP:9代表在reads的首端切除指定长度
+#删除TruSeq2接头，允许有2个不匹配，回文剪接阈值是30，简单剪接阈值10)
+
+结果一个样本输出四个文件，得到了我们需要的clean data  如下：
+SRR5651381_1_clean.fq.gz         SRR5651381_1_unpair.fq.gz    SRR5651381_2_clean.fq.gz       SRR5651381_2_unpair.fq.gz
+
+ONE注意：此时记录e文件里Input Read Pairs: 43794722 乘以2 ，为rawdata reads 数，需要记录到文章里
+注意：网上说trimmomatic后还需要再FastQC一下，看一下质控结果
+
+第二种过滤方法：
+#!/bin/sh
+#PBS -N fastp
+#PBS -l nodes=1:ppn=4
+#PBS -l mem=1gb
+#PBS -q batch
+
+# echo start at time `date +%F'  '%H:%M`
+
+cd   /public/home/ccli/zhaowenjuan/3/fastp
+
+sqsub -j d90-1 -t 4 -c "fastp -i /public/home/ccli/zhaowenjuan/shuju/rawdata3/SRR9829609.1_1.fastq.gz -o /public/home/ccli/zhaowenjuan/3/fastp/d90-1_1.clean.fastq.gz"
+
+sqsub -j d90-1 -t 4 -c "fastp -i /public/home/ccli/zhaowenjuan/shuju/rawdata3/SRR9829609.1_2.fastq.gz -o /public/home/ccli/zhaowenjuan/3/fastp/d90-1_2.clean.fastq.gz"
+
+sqsub -j d90-2 -t 4 -c "fastp -i /public/home/ccli/zhaowenjuan/shuju/rawdata3/SRR9829610_1.fastq.gz -o /public/home/ccli/zhaowenjuan/3/fastp/d90-2_1.clean.fastq.gz"
+
+sqsub -j d90-2 -t 4 -c "fastp -i /public/home/ccli/zhaowenjuan/shuju/rawdata3/SRR9829610_2.fastq.gz -o /public/home/ccli/zhaowenjuan/3/fastp/d90-2_2.clean.fastq.gz"
+
+sqsub -j d90-3 -t 4 -c "fastp -i /public/home/ccli/zhaowenjuan/shuju/rawdata3/SRR9829611_1.fastq.gz -o /public/home/ccli/zhaowenjuan/3/fastp/d90-3_1.clean.fastq.gz"
+
+sqsub -j d90-3 -t 4 -c "fastp -i /public/home/ccli/zhaowenjuan/shuju/rawdata3/SRR9829611_2.fastq.gz -o /public/home/ccli/zhaowenjuan/3/fastp/d90-3_2.clean.fastq.gz"
+
+sqsub -j d65-1 -t 4 -c "fastp -i /public/home/ccli/zhaowenjuan/shuju/rawdata3/SRR9829612_1.fastq.gz -o /public/home/ccli/zhaowenjuan/3/fastp/d65-1_1.clean.fastq.gz"
+
+sqsub -j d65-1 -t 4 -c "fastp -i /public/home/ccli/zhaowenjuan/shuju/rawdata3/SRR9829612_2.fastq.gz -o /public/home/ccli/zhaowenjuan/3/fastp/d65-1_2.clean.fastq.gz"
+
+sqsub -j d65-2 -t 4 -c "fastp -i /public/home/ccli/zhaowenjuan/shuju/rawdata3/SRR9829613.1_1.fastq.gz -o /public/home/ccli/zhaowenjuan/3/fastp/d65-2_1.clean.fastq.gz"
+
+sqsub -j d65-2 -t 4 -c "fastp -i /public/home/ccli/zhaowenjuan/shuju/rawdata3/SRR9829613.1_2.fastq.gz -o /public/home/ccli/zhaowenjuan/3/fastp/d65-2_2.clean.fastq.gz"
+
+sqsub -j d65-3 -t 4 -c "fastp -i /public/home/ccli/zhaowenjuan/shuju/rawdata3/SRR9829615_1.fastq.gz -o /public/home/ccli/zhaowenjuan/3/fastp/d65-3_1.clean.fastq.gz"
+
+sqsub -j d65-3 -t 4 -c "fastp -i /public/home/ccli/zhaowenjuan/shuju/rawdata3/SRR9829615_2.fastq.gz -o /public/home/ccli/zhaowenjuan/3/fastp/d65-3_2.clean.fastq.gz"
+
+sqsub -j d33-1 -t 4 -c "fastp -i /public/home/ccli/zhaowenjuan/shuju/rawdata3/SRR9829614.1_1.fastq.gz -o /public/home/ccli/zhaowenjuan/3/fastp/d33-1_1.clean.fastq.gz"
+
+sqsub -j d33-1 -t 4 -c "fastp -i /public/home/ccli/zhaowenjuan/shuju/rawdata3/SRR9829614.1_2.fastq.gz -o /public/home/ccli/zhaowenjuan/3/fastp/d33-1_2.clean.fastq.gz"
+
+sqsub -j d33-2 -t 4 -c "fastp -i /public/home/ccli/zhaowenjuan/shuju/rawdata3/SRR9829616_1.fastq.gz -o /public/home/ccli/zhaowenjuan/3/fastp/d33-2_1.clean.fastq.gz"
+
+sqsub -j d33-2 -t 4 -c "fastp -i /public/home/ccli/zhaowenjuan/shuju/rawdata3/SRR9829616_2.fastq.gz -o /public/home/ccli/zhaowenjuan/3/fastp/d33-2_2.clean.fastq.gz"
+
+sqsub -j d33-3 -t 4 -c "fastp -i /public/home/ccli/zhaowenjuan/shuju/rawdata3/SRR9829617_1.fastq.gz -o /public/home/ccli/zhaowenjuan/3/fastp/d33-3_1.clean.fastq.gz"
+
+sqsub -j d33-3 -t 4 -c "fastp -i /public/home/ccli/zhaowenjuan/shuju/rawdata3/SRR9829617_2.fastq.gz -o /public/home/ccli/zhaowenjuan/3/fastp/d33-3_2.clean.fastq.gz"
+
+# echo finish at time `date +%F'  '%H:%M`
+
+
+
+
+
+
+2019年12月1日
+#以下是对6个clean_data文件,从HISAT2开始，对数据进行比对
+一、HISAT2软件
+网址：https://daehwankimlab.github.io/hisat2/manual/ 或http://ccb.jhu.edu/software/hisat2/index.shtml  
+此网址包含各软件介绍： http://ccb.jhu.edu/software.shtml
+原理:将clean reads比对到参考基因组上（能检测出注释中缺失的转录剪切位点），获得Alignments（reads）,并将比对出来的Alignments（reads）以Sam格式文件输出
+（新建一个hisat2文件夹，将zhaowenjuan_hisat2.sh脚本放入文件夹中，进入服务器cd到自己文件夹中，在服务器上输入"sh zhaowenjuan_hisat2.sh”按enter键）
+服务器跑流程的命令格式为：“sh 脚本名称 sh” 当文件大且多时，采用脚本形式在服务器上跑，当文件较少时，可直接将脚本中命令放入服务器上跑
+“qsub 待跑文件 sh”其中qsub代表在后台运行该命令
+如果是Python脚本，在服务器上输“Python 脚本名称 py”
+注：在服务器上新建文件夹命名时名称中间不能有空格，必须是英文名称
+一、脚本zhaowenjuan_hisat2.sh内容如下，此为BASH脚本：
+#!/bin/sh
+#PBS -N hisat2
+#PBS -l nodes=1:ppn=4
+#PBS -l mem=1gb
+#PBS -q batch
+
+echo start at time `date +%F'  '%H:%M`
+
+cd /public/home/ccli/zhaowenjuan/HISAT2
+
+sqsub -j WEa-1 -t 4 -c "hisat2 -p 4 --dta --known-splicesite-infile ~/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/hisat2_index/splicesites.txt \
+      -x ~/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/hisat2_index/Sus_scrofa.Sscrofa11.1.dna.toplevel \
+      -1 /public/home/ccli/zhaowenjuan/clean_reads/WE-f-af-240-1_1_clean.fq.gz -2 /public/home/ccli/zhaowenjuan/clean_reads/WE-f-af-240-1_2_clean.fq.gz \
+      -S /public/home/ccli/zhaowenjuan/HISAT2/WE-f-af-240-1.sam"
+
+sqsub -j WEa-2 -t 4 -c "hisat2 -p 4 --dta --known-splicesite-infile ~/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/hisat2_index/splicesites.txt \
+      -x ~/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/hisat2_index/Sus_scrofa.Sscrofa11.1.dna.toplevel \
+      -1 /public/home/ccli/zhaowenjuan/clean_reads/WE-f-af-240-2_1_clean.fq.gz -2 /public/home/ccli/zhaowenjuan/clean_reads/WE-f-af-240-2_2_clean.fq.gz \
+      -S /public/home/ccli/zhaowenjuan/HISAT2/WE-f-af-240-2.sam"
+	  .........
+	  .........
+
+echo finish at time `date +%F'  '%H:%M`
+
+代码含义如下：
+#  bin 指基本命令   sh 文件格式
+#  PBS 指提供4条命令用于作业管理    
+#  PBS -N hisat2(软件名)  指标准输出文件定义为作业名字
+#  PBS -l nodes=1:ppn=4 指使用的机器台数和各个机器所用的核心数
+  （规定使用的节点数以及每个节点能跑多少核，程序需要几个节点，便修改nodes后的数字，每个节点有n个处理器） 
+#  PBS -l mem=1gb 指内存大小
+#  PBS -q batch  指作业的队列
+#  echo   指用于字符串的输出
+#  cd    指将输出的文件存入此路径的文件夹中
+#  sqsub  指用于提交作业脚本  【sqsub -j WEa-1（输出样本名称或文件序列号） -t 4 -c】
+   -j 样本1  指将标准输出信息与标准错误信息合并到一个文件样本中
+   
+#-p 线程数 一般就是4或者8 这个也不大重要
+#--dta 比对结果以后续string tie组装所需的格式呈现
+#--known-splicesite-infile  提供已知的剪切位点
+#-x 索引的位置和名称，即索引前缀，建立索引，即是建立参考基因组注释的索引
+#-1 -2 表示双端测序数据的两端   paired-end 数据的两部分  
+#-S 表示输出文件是Sam格式的文件
+
+#-L fregment指reads长度范围中最短的长度 若两条reads长度完全相等则会重合，反向互补不合理，如果隔得太远，不能被定义为一个paired-end
+#-X fregment指fregment中最长的长度  
+#-l和-X通常情况下我们有一个默认值 我们不需要太关心
+#--dta-cufflinks 表示比对结果以cufflinks所需的结果呈现 我们这套流程中用的是stringtie软件，不牵涉这条指令
+#--known-splicesite-infile  提供我们已知的剪切位点  这个在HISAT2官网上有详细的介绍，提供了具体的python脚本，输进去之后会给这个文件
+
+参考注释基因/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/hisat2_index/splicesites.txt此剪接位点文件部分内容如下：
+1	3557	5664	-                AEMK02000123.1	3378	4113	+           X	17721790	17727183	+
+1	5759	10905	-                AEMK02000123.1	3378	11909	+           X	17727394	17745301	+
+1	10992	14813	-                AEMK02000123.1	4137	14999	+           X	17773676	17776010	+  
+1	14997	15022	-                AEMK02000123.1	11172	11909	+           X	16890230	16891873	-
+2	142396398	142400677	-        AEMK02000361.1	1927547	1927594	+           Y	41173166	41173241	-
+2	142400766	142401046	-        AEMK02000361.1	1888631	1889604	+           Y	40751892	40752867	+
+2	142401582	142403260	+        AEMK02000125.1	40815	40972	-           Y	41177958	41180555	-
+3	7570113	7571835	-                AEMK02000361.1	1927547	1927594	+           Y	41214709	41215077	+
+3	7584586	7590409	-                AEMK02000364.1	23269	23305	-           X	54849873	54851106	+
+#内容分别代表第一列为染色体号、第二、三列为基因或转录本（或外显子）所在位置、第四列为正负链、第五列可能是基因名称等等
+部分结果展示如下：
+（1）打开其中一个文件名为“WEl-1.e2413014” 这个文件是结果的一个统计，下面是这个文件的结果
+Warning: skipping mate #2 of read 'WE-f-longissimus-dorsi-muscle-240-1.22099 A8088NABXX:7:1:11166:9214 length=90' because length (1) <= # seed mismatches (0)
+Warning: skipping mate #2 of read 'WE-f-longissimus-dorsi-muscle-240-1.22099 A8088NABXX:7:1:11166:9214 length=90' because it was < 2 characters long
+Warning: skipping mate #2 of read 'WE-f-longissimus-dorsi-muscle-240-1.28652 A8088NABXX:7:1:3513:11395 length=90' because length (1) <= # seed mismatches (0)
+Warning: skipping mate #2 of read 'WE-f-longissimus-dorsi-muscle-240-1.28652 A8088NABXX:7:1:3513:11395 length=90' because it was < 2 characters long
+Warning: skipping mate #2 of read 'WE-f-longissimus-dorsi-muscle-240-1.53170 A8088NABXX:7:1:14161:19831 length=90' because length (1) <= # seed mismatches (0)
+.........
+..........
+17134839 reads; of these:                                                  表示有17134839re条ads数,需要记录的clean reads，乘以2
+  17134839 (100.00%) were paired; of these:   记录文章里 乘以2                            表示100%是双端（paired）测序结果（如果是单端测序则会是unpaired）
+    1291979 (7.54%) aligned concordantly 0 times                           表示有7.54%的reads没有比对上
+    13149108 (76.74%) aligned concordantly exactly 1 time  记录文章里(76.74%) 乘以2     表示有76.74%的reads准确的比对了一次，超过70%数据过关
+    2693752 (15.72%) aligned concordantly >1 times                         表示有15.72%的reads比对超过1次
+    ----
+    1291979 pairs aligned concordantly 0 times; of these:
+      236410 (18.30%) aligned discordantly 1 time
+    ----
+    1055569 pairs aligned 0 times concordantly or discordantly; of these:
+	、
+      2111138 mates make up the pairs; of these:
+        1124221 (53.25%) aligned 0 times
+        703296 (33.31%) aligned exactly 1 time
+        283621 (13.43%) aligned >1 times
+96.72% overall alignment rate                              记录文章里                表示总的比对率
+
+TWO注意：在这里主要看的是上面的唯一比对率，17134839 reads; of these:这一行的样本结果乘以2，
+                                        13149108 (76.74%) aligned concordantly exactly 1 time  13149108乘以2，需要写到文章中
+                                        96.72% overall alignment rate 记录文章里
+（2）WEl-1.o2413014 这个文件是看我们程序开始和结束的时间的统计文件，可是实时查看这个文件，确定自己的程序是否进行结束
+（3）WEl-1.pbs 这个文件存放了我们运行程序的脚本，未来结果如果有问题，可以通过查看这个文件来检查我们的单条命令是否有错误
+（4）WE-f-ldm-240-1.sam 这个文件是我们最终得到我的Sam格式的文件 Sam文件的内容可以在网上查看详细的解释 
+                        但Sam文件是由头部和map结果组成的 在此我们关心的Sam文件中NH：i：1这样的标志，这样表示reads只比对了一次
+二、Samtools
+原理：排序及格式转换，即将sam文件转换为bam文件
+第一步：之前通过比对注释参考文件我们比对了能比对上的reads 这一步我们转换Sam格式到bam格式, 同时对只比对了一次的reads进行筛选(NH:i:1),
+（新建一个文件夹“Samtools”，将脚本“zhaowenjuan_samtools.sh”放入此文件夹中，
+进入服务器cd到自己文件夹中，在服务器上输入sh zhaowenjuan_samtools.sh按enter键）
+脚本格式如下：
+#!/bin/sh
+#PBS -N samtools
+#PBS -l nodes=1:ppn=4
+#PBS -l mem=1gb
+#PBS -q batch
+
+# echo start at time `date +%F'  '%H:%M`
+
+cd /public/home/ccli/zhaowenjuan/samtools
+
+sqsub -j WEa-1 -t 8 -c "samtools view -bS /public/home/ccli/zhaowenjuan/HISAT2/WE-f-af-240-1.sam > WE-f-af-240-1.bam; \
+samtools view -H WE-f-af-240-1.bam > WE-f-af-240-1_header.sam; \
+samtools view WE-f-af-240-1.bam | grep 'NH:i:1$' | cat WE-f-af-240-1_header.sam - | samtools view -bS - > WE-f-af-240-1_unique.bam; \
+samtools sort -n -o WE-f-af-240-1_unique_sorted.bam WE-f-af-240-1_unique.bam; \
+rm WE-f-af-240-1_header.sam WE-f-af-240-1_unique.bam"
+
+sqsub -j WEa-2 -t 8 -c "samtools view -bS /public/home/ccli/zhaowenjuan/HISAT2/WE-f-af-240-2.sam > WE-f-af-240-2.bam; \
+samtools view -H WE-f-af-240-2.bam > WE-f-af-240-2_header.sam; \
+samtools view WE-f-af-240-2.bam | grep 'NH:i:1$' | cat WE-f-af-240-2_header.sam - | samtools view -bS - > WE-f-af-240-2_unique.bam; \
+samtools sort -n -o WE-f-af-240-2_unique_sorted.bam WE-f-af-240-2_unique.bam; \
+rm WE-f-af-240-2_header.sam WE-f-af-240-2_unique.bam"
+.........
+.........
+
+# echo finish at time `date +%F'  '%H:%M`
+命令含义如下：
+# Samtools view -bS ...    这一行表示把Sam文件转换成bam文件，bam文件是sam文件的二进制格式，更加节省存储空间而且操作速度更快
+# -H       表示默认下输出的sam 格式文件不带header(头部)，-H参数设定将输出sam文件时带 header 信息，并提取出来
+#          此文件只含有Sam文件的头部header，header就是sam文件开头处的一些以@开头的语句
+# |        这个符号叫管道符，表示左边的输出是右边的输入
+# samtools view WE-f-af-240-1.bam | grep 'NH:i:1$' |  表示找到只比对一次的reads并提取出来，此时文件没有header
+# cat WE-f-af-240-1_header.sam - |                    表示加上header信息
+# samtools view -bS - > WE-f-af-240-1_unique.bam      表示输出唯一匹配的含有header头部的bam文件 
+#samtools sort -n -o WE-f-af-240-2_unique_sorted.bam WE-f-af-240-2_unique.bam   按照reads ID排序   
+#rm WE-f-af-240-2_header.sam WE-f-af-240-2_unique.bam        删除前面的过程中的文件            
+ 
+代码含义如下：
+#-b 以bam文件格式输出   
+#-s 默认情况输入的是bam文件，若输入的是sam文件，则需要加上该参数，不然会报错
+#-H 在输出中包含头部？表示把sam文件的头部附到bam文件上，此时bam 文件包含头部和主体
+#-| 表示启用快速bam压缩
+#-n 设置排序方式按照short reads ID排序，后续htseq count需要，默认是按照序列在fasta文件顺序和序列从左往右位点排序
+#-o 输出文件名称和储存路径
+#NH:i:<>确定比对到参考基因组上的reads数为多少，并按照要求筛选出来
+
+
+三、序列初组装（assembly）
+比对筛选后得到的bam文件必须按照基因组位置（即染色体号）排序，hisat2的输出文件则需要经过samtools sort生成的bam文件才可做下一步的输入文件
+（新建一个文件夹samtools-sort，将脚本“zhaowenjuan_samtools_sort.sh”放入文件夹中）
+脚本内容如下：
+#!/bin/sh
+#PBS -N samtools
+#PBS -l nodes=1:ppn=4
+#PBS -l mem=1gb
+#PBS -q batch
+
+# echo start at time `date +%F'  '%H:%M`
+
+cd /public/home/ccli/zhaowenjuan/samtools_sort
+
+sqsub -j WEa-1 -t 8 -c "samtools sort -o WE-f-af-240-1_unique_sorted_1.bam /public/home/ccli/zhaowenjuan/samtools/WE-f-af-240-1_unique_sorted.bam"
+
+sqsub -j WEa-2 -t 8 -c "samtools sort -o WE-f-af-240-2_unique_sorted_1.bam /public/home/ccli/zhaowenjuan/samtools/WE-f-af-240-2_unique_sorted.bam"
+
+sqsub -j WEl-1 -t 8 -c "samtools sort -o WE-f-ldm-240-1_unique_sorted_1.bam /public/home/ccli/zhaowenjuan/samtools/WE-f-ldm-240-1_unique_sorted.bam"
+
+sqsub -j WEl-2 -t 8 -c "samtools sort -o WE-f-ldm-240-2_unique_sorted_1.bam /public/home/ccli/zhaowenjuan/samtools/WE-f-ldm-240-2_unique_sorted.bam"
+
+sqsub -j WEli-1 -t 8 -c "samtools sort -o WE-f-liver-240-1_unique_sorted_1.bam /public/home/ccli/zhaowenjuan/samtools/WE-f-liver-240-1_unique_sorted.bam"
+
+sqsub -j WEli-2 -t 8 -c "samtools sort -o WE-f-liver-240-2_unique_sorted_1.bam /public/home/ccli/zhaowenjuan/samtools/WE-f-liver-240-2_unique_sorted.bam"
+
+# echo finish at time `date +%F'  '%H:%M`
+
+代码含义:
+# -O  表示输出（生成）文件名称为WE-f-af-240-1_unique_sorted_1.bam  后面代表原文件所在路径
+注意：此文件后续ballgown要用
+
+四、进入stringtie开始组装转录本
+网址：http://www.ccb.jhu.edu/software/stringtie/
+string tie原理：将alignments根据参考基因组中的注释信息组装成完整长度的或者部分长度的转录本，并且估计所有基因和转录本的表达水平
+（新建一个文件夹“stringtie”，将脚本“zhaowenjuan_stringtie.sh”放入文件夹中）
+脚本内容如下：
+#!/bin/sh
+#PBS -N stringtie
+#PBS -l nodes=1:ppn=4
+#PBS -l mem=1gb
+#PBS -q batch
+
+# echo start at time `date +%F'  '%H:%M`
+
+cd /public/home/ccli/zhaowenjuan/String Tie
+
+sqsub -j WEa-1 -t 4 -c "stringtie -p 4 -G /public/home/ccli/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/Sus_scrofa.Sscrofa11.1.90.gtf -o WE-f-af-240-1.gtf /public/home/ccli/zhaowenjuan/samtools_sort/WE-f-af-240-1_unique_sorted_1.bam"
+
+sqsub -j WEa-2 -t 4 -c "stringtie -p 4 -G /public/home/ccli/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/Sus_scrofa.Sscrofa11.1.90.gtf -o WE-f-af-240-2.gtf /public/home/ccli/zhaowenjuan/samtools_sort/WE-f-af-240-2_unique_sorted_1.bam"
+
+sqsub -j WEl-1 -t 4 -c "stringtie -p 4 -G /public/home/ccli/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/Sus_scrofa.Sscrofa11.1.90.gtf -o WE-f-ldm-240-1.gtf /public/home/ccli/zhaowenjuan/samtools_sort/WE-f-ldm-240-1_unique_sorted_1.bam"
+
+sqsub -j WEl-2 -t 4 -c "stringtie -p 4 -G /public/home/ccli/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/Sus_scrofa.Sscrofa11.1.90.gtf -o WE-f-ldm-240-2.gtf /public/home/ccli/zhaowenjuan/samtools_sort/WE-f-ldm-240-2_unique_sorted_1.bam"
+
+sqsub -j WEli-1 -t 4 -c "stringtie -p 4 -G /public/home/ccli/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/Sus_scrofa.Sscrofa11.1.90.gtf -o WE-f-liver-240-1.gtf /public/home/ccli/zhaowenjuan/samtools_sort/WE-f-liver-240-1_unique_sorted_1.bam"
+
+sqsub -j WEli-2 -t 4 -c "stringtie -p 4 -G /public/home/ccli/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/Sus_scrofa.Sscrofa11.1.90.gtf -o WE-f-liver-240-2.gtf /public/home/ccli/zhaowenjuan/samtools_sort/WE-f-liver-240-2_unique_sorted_1.bam"
+
+# echo finish at time `date +%F'  '%H:%M`
+
+代码含义：
+#-G 利用参考基因组进行组装，结果包含表达的已知转录本和新组装的转录本
+#-G /public/home/ccli/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/Sus_scrofa.Sscrofa11.1.90.gtf   表示参考基因组的路径和文件
+#-o WE-f-af-240-1.gtf /public/home/ccli/zhaowenjuan/samtools_sort/WE-f-af-240-1_unique_sorted_1.bam"   表示输出新文件名和原文件路径
+目前这一步的理解是将每个生物学重复中的比对了一次reads，在排好序的情况下，再和参考基因组比对，形成单独的转录本，即“WE-f-af-240-1.gtf”GTF文件。
+参考基因组/public/home/ccli/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/Sus_scrofa.Sscrofa11.1.90.gtf文件中部分内容如下：
+1	ensembl	gene	3472	18696	.	-	.	gene_id "ENSSSCG00000037372"; gene_version "1"; gene_name "TBP"; gene_source "ensembl"; gene_biotype "protein_coding";
+1	ensembl	transcript	3472	18546	.	-	.	gene_id "ENSSSCG00000037372"; gene_version "1"; transcript_id "ENSSSCT00000065539"; transcript_version "1"; gene_name "TBP"; gene_source "ensembl"; gene_biotype "protein_coding"; transcript_name "TBP-201"; transcript_source "ensembl"; transcript_biotype "protein_coding";
+1	ensembl	exon	18493	18546	.	-	.	gene_id "ENSSSCG00000037372"; gene_version "1"; transcript_id "ENSSSCT00000065539"; transcript_version "1"; exon_number "1"; gene_name "TBP"; gene_source "ensembl"; gene_biotype "protein_coding"; transcript_name "TBP-201"; transcript_source "ensembl"; transcript_biotype "protein_coding"; exon_id "ENSSSCE00000190268"; exon_version "2";
+1	ensembl	CDS	18493	18546	.	-	0	gene_id "ENSSSCG00000037372"; gene_version "1"; transcript_id "ENSSSCT00000065539"; transcript_version "1"; exon_number "1"; gene_name "TBP"; gene_source "ensembl"; gene_biotype "protein_coding"; transcript_name "TBP-201"; transcript_source "ensembl"; transcript_biotype "protein_coding"; protein_id "ENSSSCP00000053834"; protein_version "1";
+1	ensembl	start_codon	18544	18546	.	-	0	gene_id "ENSSSCG00000037372"; gene_version "1"; transcript_id "ENSSSCT00000065539"; transcript_version "1"; exon_number "1"; gene_name "TBP"; gene_source "ensembl"; gene_biotype "protein_coding"; transcript_name "TBP-201"; transcript_source "ensembl"; transcript_biotype "protein_coding";
+1	ensembl	exon	14814	15217	.	-	.	gene_id "ENSSSCG00000037372"; gene_version "1"; transcript_id "ENSSSCT00000065539"; transcript_version "1"; exon_number "2"; gene_name "TBP"; gene_source "ensembl"; gene_biotype "protein_coding"; transcript_name "TBP-201"; transcript_source "ensembl"; transcript_biotype "protein_coding"; exon_id "ENSSSCE00000293218"; exon_version "1";
+1	ensembl	CDS	14814	15217	.	-	0	gene_id "ENSSSCG00000037372"; gene_version "1"; transcript_id "ENSSSCT00000065539"; transcript_version "1"; exon_number "2"; gene_name "TBP"; gene_source "ensembl"; gene_biotype "protein_coding"; transcript_name "TBP-201"; transcript_source "ensembl"; transcript_biotype "protein_coding"; protein_id "ENSSSCP00000053834"; protein_version "1";
+1	ensembl	exon	10906	10993	.	-	.	gene_id "ENSSSCG00000037372"; gene_version "1"; transcript_id "ENSSSCT00000065539"; transcript_version "1"; exon_number "3"; gene_name "TBP"; gene_source "ensembl"; gene_biotype "protein_coding"; transcript_name "TBP-201"; transcript_source "ensembl"; transcript_biotype "protein_coding"; exon_id "ENSSSCE00000168234"; exon_version "1";
+1	ensembl	CDS	10906	10993	.	-	1	gene_id "ENSSSCG00000037372"; gene_version "1"; transcript_id "ENSSSCT00000065539"; transcript_version "1"; exon_number "3"; gene_name "TBP"; gene_source "ensembl"; gene_biotype "protein_coding"; transcript_name "TBP-201"; transcript_source "ensembl"; transcript_biotype "protein_coding"; protein_id "ENSSSCP00000053834"; protein_version "1";
+1	ensembl	exon	5665	5760	.	-	.	gene_id "ENSSSCG00000037372"; gene_version "1"; transcript_id "ENSSSCT00000065539"; transcript_version "1"; exon_number "4"; gene_name "TBP"; gene_source "ensembl"; gene_biotype "protein_coding"; transcript_name "TBP-201"; transcript_source "ensembl"; transcript_biotype "protein_coding"; exon_id "ENSSSCE00000236491"; exon_version "2";
+1	ensembl	CDS	5665	5760	.	-	0	gene_id "ENSSSCG00000037372"; gene_version "1"; transcript_id "ENSSSCT00000065539"; transcript_version "1"; exon_number "4"; gene_name "TBP"; gene_source "ensembl"; gene_biotype "protein_coding"; transcript_name "TBP-201"; transcript_source "ensembl"; transcript_biotype "protein_coding"; protein_id "ENSSSCP00000053834"; protein_version "1";
+1	ensembl	exon	3472	3558	.	-	.	gene_id "ENSSSCG00000037372"; gene_version "1"; transcript_id "ENSSSCT00000065539"; transcript_version "1"; exon_number "5"; gene_name "TBP"; gene_source "ensembl"; gene_biotype "protein_coding"; transcript_name "TBP-201"; transcript_source "ensembl"; transcript_biotype "protein_coding"; exon_id "ENSSSCE00000361524"; exon_version "1";
+1	ensembl	CDS	3475	3558	.	-	0	gene_id "ENSSSCG00000037372"; gene_version "1"; transcript_id "ENSSSCT00000065539"; transcript_version "1"; exon_number "5"; gene_name "TBP"; gene_source "ensembl"; gene_biotype "protein_coding"; transcript_name "TBP-201"; transcript_source "ensembl"; transcript_biotype "protein_coding"; protein_id "ENSSSCP00000053834"; protein_version "1";
+1	ensembl	stop_codon	3472	3474	.	-	0	gene_id "ENSSSCG00000037372"; gene_version "1"; transcript_id "ENSSSCT00000065539"; transcript_version "1"; exon_number "5"; gene_name "TBP"; gene_source "ensembl"; gene_biotype "protein_coding"; transcript_name "TBP-201"; transcript_source "ensembl"; transcript_biotype "protein_coding";
+1	ensembl	transcript	3472	18546	.	-	.	gene_id "ENSSSCG00000037372"; gene_version "1"; transcript_id "ENSSSCT00000042326"; transcript_version "1"; gene_name "TBP"; gene_source "ensembl"; gene_biotype "protein_coding"; transcript_name "TBP-202"; transcript_source "ensembl"; transcript_biotype "protein_coding";
+1	ensembl	exon	18493	18546	.	-	.	gene_id "ENSSSCG00000037372"; gene_version "1"; transcript_id "ENSSSCT00000042326"; transcript_version "1"; exon_number "1"; gene_name "TBP"; gene_source "ensembl"; gene_biotype "protein_coding"; transcript_name "TBP-202"; transcript_source "ensembl"; transcript_biotype "protein_coding"; exon_id "ENSSSCE00000190268"; exon_version "2";
+1	ensembl	CDS	18493	18546	.	-	0	gene_id "ENSSSCG00000037372"; gene_version "1"; transcript_id "ENSSSCT00000042326"; transcript_version "1"; exon_number "1"; gene_name "TBP"; gene_source "ensembl"; gene_biotype "protein_coding"; transcript_name "TBP-202"; transcript_source "ensembl"; transcript_biotype "protein_coding"; protein_id "ENSSSCP00000056725"; protein_version "1";
+1	ensembl	start_codon	18544	18546	.	-	0	gene_id "ENSSSCG00000037372"; gene_version "1"; transcript_id "ENSSSCT00000042326"; transcript_version "1"; exon_number "1"; gene_name "TBP"; gene_source "ensembl"; gene_biotype "protein_coding"; transcript_name "TBP-202"; transcript_source "ensembl"; transcript_biotype "protein_coding";
+
+结果生成6个GTF文件，其中一个文件“WE-f-ldm-240-2”GTF文件部分 内容如下：
+# stringtie -p 4 -G /public/home/ccli/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/Sus_scrofa.Sscrofa11.1.90.gtf -o WE-f-ldm-240-2.gtf /public/home/ccli/zhaowenjuan/samtools_sort/WE-f-ldm-240-2_unique_sorted_1.bam
+# StringTie version 1.3.4d
+1	StringTie	transcript	3135	3986	1000	-	.	gene_id "STRG.1"; transcript_id "STRG.1.1"; cov "3.597713"; FPKM "1.603970"; TPM "3.189142";
+1	StringTie	exon	3135	3986	1000	-	.	gene_id "STRG.1"; transcript_id "STRG.1.1"; exon_number "1"; cov "3.597713";
+1	StringTie	transcript	807	3466	1000	+	.	gene_id "STRG.2"; transcript_id "STRG.2.1"; cov "3.597739"; FPKM "1.603982"; TPM "3.189165";
+1	StringTie	exon	807	961	1000	+	.	gene_id "STRG.2"; transcript_id "STRG.2.1"; exon_number "1"; cov "3.556754";
+1	StringTie	exon	2371	2465	1000	+	.	gene_id "STRG.2"; transcript_id "STRG.2.1"; exon_number "2"; cov "10.336843";
+1	StringTie	exon	3118	3466	1000	+	.	gene_id "STRG.2"; transcript_id "STRG.2.1"; exon_number "3"; cov "1.781515";
+1	StringTie	transcript	5659	18696	1000	-	.	gene_id "STRG.3"; transcript_id "STRG.3.1"; reference_id "ENSSSCT00000046027"; ref_gene_id "ENSSSCG00000037372"; ref_gene_name "TBP"; cov "3.756615"; FPKM "1.674814"; TPM "3.329998";
+1	StringTie	exon	5659	5760	1000	-	.	gene_id "STRG.3"; transcript_id "STRG.3.1"; exon_number "1"; reference_id "ENSSSCT00000046027"; ref_gene_id "ENSSSCG00000037372"; ref_gene_name "TBP"; cov "4.599758";
+1	StringTie	exon	10906	10993	1000	-	.	gene_id "STRG.3"; transcript_id "STRG.3.1"; exon_number "2"; reference_id "ENSSSCT00000046027"; ref_gene_id "ENSSSCG00000037372"; ref_gene_name "TBP"; cov "6.086093";
+1	StringTie	exon	14814	15217	1000	-	.	gene_id "STRG.3"; transcript_id "STRG.3.1"; exon_number "3"; reference_id "ENSSSCT00000046027"; ref_gene_id "ENSSSCG00000037372"; ref_gene_name "TBP"; cov "1.613930";
+1	StringTie	exon	18493	18696	1000	-	.	gene_id "STRG.3"; transcript_id "STRG.3.1"; exon_number "4"; reference_id "ENSSSCT00000046027"; ref_gene_id "ENSSSCG00000037372"; ref_gene_name "TBP"; cov "6.573529";
+1	StringTie	transcript	226571	226774	1000	.	.	gene_id "STRG.4"; transcript_id "STRG.4.1"; cov "2.676471"; FPKM "1.193253"; TPM "2.372520";
+1	StringTie	exon	226571	226774	1000	.	.	gene_id "STRG.4"; transcript_id "STRG.4.1"; exon_number "1"; cov "2.676471";
+1	StringTie	transcript	23368	39931	1000	+	.	gene_id "STRG.5"; transcript_id "STRG.5.1"; reference_id "ENSSSCT00000058189"; ref_gene_id "ENSSSCG00000027257"; ref_gene_name "PSMB1"; cov "130.956970"; FPKM "58.384617"; TPM "116.084938";
+1	StringTie	exon	23368	23965	1000	+	.	gene_id "STRG.5"; transcript_id "STRG.5.1"; exon_number "1"; reference_id "ENSSSCT00000058189"; ref_gene_id "ENSSSCG00000027257"; ref_gene_name "PSMB1"; cov "78.998207";
+1	StringTie	exon	27360	27467	1000	+	.	gene_id "STRG.5"; transcript_id "STRG.5.1"; exon_number "2"; reference_id "ENSSSCT00000058189"; ref_gene_id "ENSSSCG00000027257"; ref_gene_name "PSMB1"; cov "556.493469";
+1	StringTie	exon	30768	30849	1000	+	.	gene_id "STRG.5"; transcript_id "STRG.5.1"; exon_number "3"; reference_id "ENSSSCT00000058189"; ref_gene_id "ENSSSCG00000027257"; ref_gene_name "PSMB1"; cov "191.475342";
+1	StringTie	exon	33300	33429	1000	+	.	gene_id "STRG.5"; transcript_id "STRG.5.1"; exon_number "4"; reference_id "ENSSSCT00000058189"; ref_gene_id "ENSSSCG00000027257"; ref_gene_name "PSMB1"; cov "118.854668";
+1	StringTie	exon	38651	38757	1000	+	.	gene_id "STRG.5"; transcript_id "STRG.5.1"; exon_number "5"; reference_id "ENSSSCT00000058189"; ref_gene_id "ENSSSCG00000027257"; ref_gene_name "PSMB1"; cov "65.246300";
+1	StringTie	exon	39746	39931	1000	+	.	gene_id "STRG.5"; transcript_id "STRG.5.1"; exon_number "6"; reference_id "ENSSSCT00000058189"; ref_gene_id "ENSSSCG00000027257"; ref_gene_name "PSMB1"; cov "74.601059";
+
+#  “1” 代表染色体号，后面从1-18号，还有X、AEMK02000229.1、MT 等
+#  stringtie gtf  文件来源
+#  每一行从数字“1”开始数，第4列是外显子的起始位点，第五列是终止位点，以此可以定位一个reads
+#  一个转录本下面包含1、2、4、6等个外显子，这个数量不一致
+#  exon_number：给定文本中单个外显子的唯一标识符，从1开始
+#  1000 表示转录本组装的置信度（可信度分数）
+#  正向链： '+'； 反向链： '-'.
+#  CDS特征的 Frame or phase    StringTie不使用该字段，只记录一个“.”
+#  gene_id：基于比对文件名的单个基因及其子转录本和外显子的唯一标识符  此处的为软件默认命名的，不是基因库里的实际gene_id
+#  transcript_id：基于比对文件名的单个副本及其子外显子的唯一标识符    此处的为软件默认命名的，不是基因库里的实际transcript_id
+#  这个gene_id和transcript_id都是系统设定的(系统自己生成）并不是真正的reads的id，这就代表虽然id相同，但后面的TPM和FTPM根本不一样，后续分析不能直接使用这些文件
+#  所以要下一步，合并这些转录本，找到唯一标尺。gene_id和transcript_id，而基因组原有部分gene_id会被新的MSTRG.1取代
+#  cov:转录或外显子的平均每基?覆盖率
+#  FPKM：每千碱基的转录片段每百万读对。这是对齐到该特性的读取对的数量，由已排序片段的总数(以百万计)和转录的长度(以千碱基计)进行标准化
+#  TPM: 这是来自这个特定基因的转录本的数量，首先按基因长度归一化，然后按样本中的测序深度(以百万计)归一化。
+#  在这里可以找到TPM和FPKM的详细解释和比较，这里TPM是由B. Li和C. Dewey定义的。
+#对于这些gtf文件结果需要进一步处理，才能做后续的差异分析，即需要一套完整的具有唯一的标识符，起始位点等的标准，
+来进行转录本在组间表达情况的衡量，才能进行差异分析---这就是转录本合并的意义
+注意：每个样品的起始位置不同，代表样品不同，不能用此时的FPKM去做差异分析，但此FPKM对后续有用
+               虽然样本gene_id和transcrip_id相同，这些是软件默认的编号，只是临时的编号，没有特别的意义，不是基因库的id
+               该文件中的第一行内容为脚本信息  第二行为string tie软件的版本信息，做后续的分析需要删除这两行信息
+               可以在服务器上输命令：wc -l *.gtf   来查看每个样本的行数都不同     
+
+THREE注意：在这一步需要记录string tie后的transcript数量，写到文章中
+                
+五、合并转录本
+这里调用了“stringtie-merge”这个在stringtie软件中的函数
+原理：因为每个样本中相同的gene_id和transcrip_id对应的实际上是不同的片段，需要合并到一起再分析
+ merge是将所有样本中的所有基因合并到一起，因为进行stringtie时，可能某些样本中的部分reads被覆盖，merge使所有样本中的转录本保持一致，以便后续的组间比较
+string tie -merge 根据参考基因组注释信息，将所有的转录本合并到一起
+（新建一个文件夹stringtie-merge，将脚本zhaowenjuan_stringtie_merge.sh和文本文档“merge_list.txt”放入文件夹中）
+第一步：通过文本编辑器建立一个记事本，将string tie文件夹里的6个GTF文件的路径放入此记事本中，保存记事本文件格式为“txt”文本文档放入stringtie-merge文件夹中
+其中包含每一个文件的绝对路径，txt文本文档内容如下：
+/public/home/ccli/zhaowenjuan/String_tie/WE-f-af-240-1.gtf
+/public/home/ccli/zhaowenjuan/String_tie/WE-f-af-240-2.gtf
+/public/home/ccli/zhaowenjuan/String_tie/WE-f-ldm-240-1.gtf
+/public/home/ccli/zhaowenjuan/String_tie/WE-f-ldm-240-2.gtf
+/public/home/ccli/zhaowenjuan/String_tie/WE-f-liver-240-1.gtf
+/public/home/ccli/zhaowenjuan/String_tie/WE-f-liver-240-2.gtf
+注意：自己保存的文件格式总出错，建议用跑成功的脚本改变内容
+
+第二步：脚本zhaowenjuan_stringtie_merge内容如下：
+#!/bin/sh
+#PBS -N stringtie
+#PBS -l nodes=1:ppn=4
+#PBS -l mem=1gb
+#PBS -q batch
+
+# echo start at time `date +%F'  '%H:%M`
+
+cd /public/home/ccli/zhaowenjuan/String_tie_merge
+
+sqsub -j merge -t 4 -c "stringtie --merge -p 4 -G /public/home/ccli/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/Sus_scrofa.Sscrofa11.1.90.gtf -o stringtie_merged.gtf /public/home/ccli/zhaowenjuan/String_tie_merge/merge_list.txt"
+
+# echo finish at time `date +%F'  '%H:%M`
+提示：此脚本与上个脚本的区别：一是多了--merge 二是输入文件路径为记事本路径，输出文件仍是GTF文件
+其中一个GTF文件部分结果如下：
+# stringtie --merge -p 4 -G /public/home/ccli/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/Sus_scrofa.Sscrofa11.1.90.gtf -o stringtie_merged.gtf /public/home/ccli/zhaowenjuan/String_tie_merge/merge_list.txt
+# StringTie version 1.3.4d
+1	StringTie	transcript	23368	39931	1000	+	.	gene_id "MSTRG.1"; transcript_id "ENSSSCT00000058189"; gene_name "PSMB1"; ref_gene_id "ENSSSCG00000027257"; 
+1	StringTie	exon	23368	23965	1000	+	.	gene_id "MSTRG.1"; transcript_id "ENSSSCT00000058189"; exon_number "1"; gene_name "PSMB1"; ref_gene_id "ENSSSCG00000027257"; 
+1	StringTie	exon	27360	27467	1000	+	.	gene_id "MSTRG.1"; transcript_id "ENSSSCT00000058189"; exon_number "2"; gene_name "PSMB1"; ref_gene_id "ENSSSCG00000027257"; 
+1	StringTie	exon	30768	30849	1000	+	.	gene_id "MSTRG.1"; transcript_id "ENSSSCT00000058189"; exon_number "3"; gene_name "PSMB1"; ref_gene_id "ENSSSCG00000027257"; 
+1	StringTie	exon	33300	33429	1000	+	.	gene_id "MSTRG.1"; transcript_id "ENSSSCT00000058189"; exon_number "4"; gene_name "PSMB1"; ref_gene_id "ENSSSCG00000027257"; 
+1	StringTie	exon	38651	38757	1000	+	.	gene_id "MSTRG.1"; transcript_id "ENSSSCT00000058189"; exon_number "5"; gene_name "PSMB1"; ref_gene_id "ENSSSCG00000027257"; 
+1	StringTie	exon	39746	39931	1000	+	.	gene_id "MSTRG.1"; transcript_id "ENSSSCT00000058189"; exon_number "6"; gene_name "PSMB1"; ref_gene_id "ENSSSCG00000027257"; 
+1	StringTie	transcript	399141	399482	1000	.	.	gene_id "MSTRG.5"; transcript_id "MSTRG.5.1"; 
+1	StringTie	exon	399141	399482	1000	.	.	gene_id "MSTRG.5"; transcript_id "MSTRG.5.1"; exon_number "1"; 
+1	StringTie	transcript	1	3474	1000	+	.	gene_id "MSTRG.8"; transcript_id "MSTRG.8.1"; 
+1	StringTie	exon	1	961	1000	+	.	gene_id "MSTRG.8"; transcript_id "MSTRG.8.1"; exon_number "1"; 
+1	StringTie	exon	2371	2465	1000	+	.	gene_id "MSTRG.8"; transcript_id "MSTRG.8.1"; exon_number "2"; 
+1	StringTie	exon	3118	3474	1000	+	.	gene_id "MSTRG.8"; transcript_id "MSTRG.8.1"; exon_number "3"; 
+
+注：通过string tie每个数据都生成了一个单独的转录本，一共有6个，再通过string tie merge对上面的6个转录本取并集，得到一个总的转录本
+可以理解为相对于原来的参考基因组yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/Sus_scrofa.Sscrofa11.1.90.gtf来说
+这是一个经过整理后，形成的一个新的基因组，即是生成的“stringtie_merged.gtf”文件，
+注意：此文件是后续定量、差异分析的参考。
+
+六、Gffcompare-新转录本的注释，lncRNA必备，普通转录组忽略
+这一步为后面的lincRNA筛选做准备，目的是得到TRACKING文件
+
+由于在组装的过程中产生了大量的新的转录本信息，而我们仅通过肉眼观察其唯一的注释信息----染色体上的起始位置，很显然无法阐明其中蕴含的生物学意义，
+因此我们需要将它们与已知的转录本注释文件---annotation.gtf进行比较，将新得到的转录本与注释好的转录本之间建立联系，这样可以让我们更好地发现新的转录本。
+而gffcompare就是做的这个工作，
+
+网址：http://ccb.jhu.edu/software/stringtie/gff.shtml
+原理:与参考注释（也以GFF提供）进行比较时，程序gffcompare可用于比较，合并，注释和估计一个或多个GFF文件（“quary”文件）的准确性
+目的：比对有多少个与参考基因组一样的编码or非编码？基因，并将匹配的转录本（相同的含内含子链）写入TRACKING和GTF文件中
+脚本如下：
+#!/bin/sh
+#PBS -N gffcompare
+#PBS -l nodes=1:ppn=4
+#PBS -l mem=1gb
+#PBS -q batch
+
+echo start at time `date +%F'  '%H:%M`
+
+cd /public/home/ccli/zhaowenjuan/gffcompare
+
+sqsub -j WEa-1 -t 4 -c "gffcompare -r /public/home/ccli/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/Sus_scrofa.Sscrofa11.1.90.gtf -o gffcompare /public/home/ccli/zhaowenjuan/String_tie_merge/stringtie_merged.gtf"
+
+
+echo finish at time `date +%F'  '%H:%M`
+
+代码含义：
+#-r 其后为“参考”注释GFF文件。每个样本都与此文件相匹配，并且适当时将样本同工型标记为重叠，匹配或新颖
+#-o gffcompare创建的所有输出文件都有这个前缀(例如.loci、.tracking文件等)。如果未提供此选项，则使用的默认输出前缀为:" gffcmp "
+   
+此步流程生成4个结果文件分别为：
+"gffcompare.stats” STATS文件、“gffcompare.loci”  LOCI文件、“gffcompare.tracking” TRACKING文件和“gffcompare.annotated.gtf” GTF文件
+其中生成的tracking文件用于之后的筛选LncRNA
+      各文件结果如下：
+1、gffcompare.stats” STATS文件结果包含外显子、内含子链、转录本、基因座等等
+详细介绍在上面的网址：http://ccb.jhu.edu/software/stringtie/gff.shtml
+2、gffcompare.loci”  LOCI文件部分结果如下：
+XLOC_000001	1[+]1-3474	-	MSTRG.8.1
+XLOC_000002	1[+]23368-40113	PSMB1|ENSSSCT00000058189,PSMB1|ENSSSCT00000023500	ENSSSCT00000058189,ENSSSCT00000023500
+XLOC_000003	1[+]198992-211342	DLL1|ENSSSCT00000024788,DLL1|ENSSSCT00000062318	ENSSSCT00000024788,ENSSSCT00000062318
+XLOC_000004	1[+]352196-356072	ENSSSCG00000033475|ENSSSCT00000054059	ENSSSCT00000054059
+XLOC_000005	1[+]470506-475345	ENSSSCG00000035944|ENSSSCT00000052221	ENSSSCT00000052221
+XLOC_000006	1[+]541028-551881	TCTE3|ENSSSCT00000004433	ENSSSCT00000004433
+XLOC_000007	1[+]555355-578329	PHF10|ENSSSCT00000004429,PHF10|ENSSSCT00000004435,PHF10|ENSSSCT00000031463,PHF10|ENSSSCT00000056161	ENSSSCT00000004429,ENSSSCT00000004435,ENSSSCT00000031463,ENSSSCT00000056161
+XLOC_000008	1[+]578465-719928	WDR27|ENSSSCT00000004431	ENSSSCT00000004431,MSTRG.21.2
+XLOC_000009	1[+]855024-883694	THBS2|ENSSSCT00000004436,THBS2|ENSSSCT00000044270,THBS2|ENSSSCT00000064251	ENSSSCT00000004436,ENSSSCT00000044270,ENSSSCT00000064251
+XLOC_000010	1[+]1414134-1423270	DACT2|ENSSSCT00000050017,DACT2|ENSSSCT00000062180	ENSSSCT00000050017,ENSSSCT00000062180
+XLOC_000011	1[+]1495818-1521666	FRMD1|ENSSSCT00000004442,FRMD1|ENSSSCT00000027970	ENSSSCT00000004442,MSTRG.32.1,ENSSSCT00000027970
+XLOC_000012	1[+]1698159-1700665	-	MSTRG.51.1
+XLOC_000013	1[+]1706941-1709777	-	MSTRG.34.1
+XLOC_000014	1[+]1753684-1756824	-	MSTRG.35.1
+XLOC_000015	1[+]1758231-1768407	-	MSTRG.40.1,MSTRG.40.2
+详细说明见网页：http://ccb.jhu.edu/software/stringtie/gff.shtml
+
+3、gffcompare.tracking” TRACKING文件部分结果如下：
+TCONS_00000001	XLOC_000001	TBP|ENSSSCT00000042326	x	q1:MSTRG.8|MSTRG.8.1|3|0.000000|0.000000|0.000000|1413
+TCONS_00000002	XLOC_000002	PSMB1|ENSSSCT00000058189	=	q1:PSMB1|ENSSSCT00000058189|6|0.000000|0.000000|0.000000|1211
+TCONS_00000003	XLOC_000002	PSMB1|ENSSSCT00000023500	=	q1:PSMB1|ENSSSCT00000023500|5|0.000000|0.000000|0.000000|800
+TCONS_00000004	XLOC_000003	DLL1|ENSSSCT00000024788	=	q1:DLL1|ENSSSCT00000024788|12|0.000000|0.000000|0.000000|3291
+TCONS_00000005	XLOC_000003	DLL1|ENSSSCT00000062318	=	q1:DLL1|ENSSSCT00000062318|12|0.000000|0.000000|0.000000|5029
+TCONS_00000022	XLOC_000011	FRMD1|ENSSSCT00000027970	=	q1:FRMD1|ENSSSCT00000027970|18|0.000000|0.000000|0.000000|5924
+TCONS_00000023	XLOC_000012	AFDN|ENSSSCT00000039396	x	q1:MSTRG.51|MSTRG.51.1|2|0.000000|0.000000|0.000000|814
+TCONS_00000024	XLOC_000013	-	u	q1:MSTRG.34|MSTRG.34.1|1|0.000000|0.000000|0.000000|2837
+TCONS_00000025	XLOC_000014	-	u	q1:MSTRG.35|MSTRG.35.1|2|0.000000|0.000000|0.000000|1070
+TCONS_00000026	XLOC_000015	-	u	q1:MSTRG.40|MSTRG.40.1|2|0.000000|0.000000|0.000000|1835
+TCONS_00000027	XLOC_000015	-	u	q1:MSTRG.40|MSTRG.40.2|2|0.000000|0.000000|0.000000|1055
+TCONS_00000028	XLOC_000016	-	u	q1:MSTRG.37|MSTRG.37.1|2|0.000000|0.000000|0.000000|912
+详细说明见网页：http://ccb.jhu.edu/software/stringtie/gff.shtml
+
+注意：此文件为后续lncRNA鉴定筛选，即选出class code 为U、外显子数>2长度超过200bp的数量
+
+4、gffcompare.annotated.gtf” GTF文件部分结果如下：
+1	StringTie	transcript	1	3474	.	+	.	transcript_id "MSTRG.8.1"; gene_id "MSTRG.8"; gene_name "TBP"; xloc "XLOC_000001"; cmp_ref "ENSSSCT00000042326"; class_code "x"; tss_id "TSS1";
+1	StringTie	exon	1	961	.	+	.	transcript_id "MSTRG.8.1"; gene_id "MSTRG.8"; exon_number "1";
+1	StringTie	exon	2371	2465	.	+	.	transcript_id "MSTRG.8.1"; gene_id "MSTRG.8"; exon_number "2";
+1	StringTie	exon	3118	3474	.	+	.	transcript_id "MSTRG.8.1"; gene_id "MSTRG.8"; exon_number "3";
+1	StringTie	transcript	23368	39931	.	+	.	transcript_id "ENSSSCT00000058189"; gene_id "MSTRG.1"; gene_name "PSMB1"; xloc "XLOC_000002"; ref_gene_id "ENSSSCG00000027257"; cmp_ref "ENSSSCT00000058189"; class_code "="; tss_id "TSS2";
+1	StringTie	exon	23368	23965	.	+	.	transcript_id "ENSSSCT00000058189"; gene_id "MSTRG.1"; exon_number "1";
+1	StringTie	exon	27360	27467	.	+	.	transcript_id "ENSSSCT00000058189"; gene_id "MSTRG.1"; exon_number "2";
+1	StringTie	exon	30768	30849	.	+	.	transcript_id "ENSSSCT00000058189"; gene_id "MSTRG.1"; exon_number "3";
+1	StringTie	exon	33300	33429	.	+	.	transcript_id "ENSSSCT00000058189"; gene_id "MSTRG.1"; exon_number "4";
+1	StringTie	exon	38651	38757	.	+	.	transcript_id "ENSSSCT00000058189"; gene_id "MSTRG.1"; exon_number "5";
+1	StringTie	exon	39746	39931	.	+	.	transcript_id "ENSSSCT00000058189"; gene_id "MSTRG.1"; exon_number "6";
+详细说明见网页：http://ccb.jhu.edu/software/stringtie/gff.shtml
+
+注意：以下2个结果文件自动储存在stringtie_merge文件夹了
+5、TMAP文件“gffcompare.stringtie_merged.gtf.tmap”中部分结果如下：
+ref_gene_id	ref_id	class_code	qry_gene_id	qry_id	num_exons	FPKM	TPM		cov	len	major_iso_id	ref_match_len
+PSMB1	ENSSSCT00000058189	=	PSMB1	ENSSSCT00000058189	6	0.000000	0.000000	0.000000	1211	ENSSSCT00000058189	1211
+PSMB1	ENSSSCT00000023500	=	PSMB1	ENSSSCT00000023500	5	0.000000	0.000000	0.000000	800	ENSSSCT00000058189	800
+DLL1	ENSSSCT00000024788	=	DLL1	ENSSSCT00000024788	12	0.000000	0.000000	0.000000	3291	ENSSSCT00000062318	3291
+DLL1	ENSSSCT00000062318	=	DLL1	ENSSSCT00000062318	12	0.000000	0.000000	0.000000	5029	ENSSSCT00000062318	5029
+-	-	u	MSTRG.3	MSTRG.3.1	2	0.000000	0.000000	0.000000	444	MSTRG.3.1	-
+-	-	u	MSTRG.4	MSTRG.4.1	1	0.000000	0.000000	0.000000	204	MSTRG.4.1	-
+ERMARD	ENSSSCT00000041743	p	MSTRG.7	MSTRG.7.1	1	0.000000	0.000000	0.000000	696	MSTRG.7.1	2973
+TBP	ENSSSCT00000042326	x	MSTRG.8	MSTRG.8.1	3	0.000000	0.000000	0.000000	1413	MSTRG.8.1	705
+TBP	ENSSSCT00000042326	j	MSTRG.9	MSTRG.9.3	5	0.000000	0.000000	0.000000	889	MSTRG.9.3	705
+TBP	ENSSSCT00000046027	=	TBP	ENSSSCT00000046027	4	0.000000	0.000000	0.000000	798	MSTRG.9.3	798
+TCTE3	ENSSSCT00000004433	=	TCTE3	ENSSSCT00000004433	4	0.000000	0.000000	0.000000	585	ENSSSCT00000004433	585
+TCTE3	ENSSSCT00000004433	i	MSTRG.11	MSTRG.11.1	1	0.000000	0.000000	0.000000	280	MSTRG.11.1	585
+FAM120B	ENSSSCT00000055371	=	FAM120B	ENSSSCT00000055371	10	0.000000	0.000000	0.000000	2919	ENSSSCT00000047788	2919
+FAM120B	ENSSSCT00000047009	j	MSTRG.12	MSTRG.12.2	12	0.000000	0.000000	0.000000	4058	ENSSSCT00000047788	4615
+FAM120B	ENSSSCT00000055371	i	MSTRG.13	MSTRG.13.1	1	0.000000	0.000000	0.000000	266	MSTRG.13.1	2919
+FAM120B	ENSSSCT00000055371	i	MSTRG.14	MSTRG.14.1	1	0.000000	0.000000	0.000000	218	MSTRG.14.1	2919
+详细说明见网页：http://cole-trapnell-lab.github.io/cufflinks/cuffcompare/index.html
+#第一列是参考基因id，第二列是参考id,第三列是标识符等等，后面还有match_len即比对的片段长度
+# =  代表比对到内含子链上
+# U 代表未知的基因间转录本，后续需要将这部分转录本挑出来
+注意：需要注意的是class_code这一列的信息，我们组装出来的转录本和参考注释基因的转录本比较，
+      他们之间的关系可能会出现：完全重合、部分重合、完全没有重合的情况
+      可以去官网查class_code U、=、i、j等含义
+	  
+6、文件“gffcompare.stringtie_merged.gtf.refmap”中部分结果如下：
+ref_gene_id	ref_id	class_code	qry_id_list
+PSMB1	ENSSSCT00000058189	=	PSMB1|ENSSSCT00000058189
+PSMB1	ENSSSCT00000023500	=	PSMB1|ENSSSCT00000023500
+DLL1	ENSSSCT00000024788	=	DLL1|ENSSSCT00000024788
+DLL1	ENSSSCT00000062318	=	DLL1|ENSSSCT00000062318
+ENSSSCG00000033475	ENSSSCT00000054059	=	ENSSSCG00000033475|ENSSSCT00000054059
+ENSSSCG00000035944	ENSSSCT00000052221	=	ENSSSCG00000035944|ENSSSCT00000052221
+TCTE3	ENSSSCT00000004433	=	TCTE3|ENSSSCT00000004433
+PHF10	ENSSSCT00000004429	=	PHF10|ENSSSCT00000004429
+THBS2	ENSSSCT00000044270	=	THBS2|ENSSSCT00000044270
+THBS2	ENSSSCT00000064251	=	THBS2|ENSSSCT00000064251
+详细说明见网页：http://ccb.jhu.edu/software/stringtie/gff.shtml
+网页：http://ccb.jhu.edu/software.shtml中有各软件的介绍和功能，其中包括HISAT2、String Tie、Ballgown等
+
+
+下面两个定量可先不做，定量和筛选lincRNA步骤不连贯，不分先后顺序
+#下来我们还是做定量的步骤，有两种方法来做定量，每一条路的后续处理都不一样
+
+#定量方法1
+ballgown 是一个差异表达分析RNA-Seq数据的R包  ，可使结果可视化
+原理：通过stringtie 后，为了确定哪些基因和转录本在两个实验组或者多个实验组中差异表达，即鉴定出相比较的两组中的差异表达的基因或者转录本
+      RNAseq流程套路为：HISAT2+Stringtie+Ballgown即是鉴定差异表达的lncRNA
+网址：https://www.jianshu.com/p/5c01d9061e16
+要求： 1、RNAseq reads应该已比对到参考基因组上
+       2、转录组应该已经组装或下载参考转录组
+	   3、转录组特征（转录本、外显子、内含子连接的表达应处理成Ballgown可读的格式）
+目的：ballgown软件包提供了组织、可视化和分析表达测量的功能。Ballgown是用R写的，是Bioconductor的一部分
+
+新建名为“ballgown”文件夹,把脚本“zhaowenjuan_ballgown.sh”放入文件夹中，BASH脚本中命令如下：
+#!/bin/sh
+#PBS -N ballgown
+#PBS -l nodes=1:ppn=4
+#PBS -l mem=1gb
+#PBS -q batch
+
+echo start at time `date +%F'  '%H:%M`
+
+cd /public/home/ccli/zhaowenjuan/Ballgown
+
+sqsub -j WEa-1 -t 4 -c "stringtie -e -B -p 8 -G /public/home/ccli/zhaowenjuan/String_tie_merge/stringtie_merged.gtf -o /public/home/ccli/zhaowenjuan/Ballgown/ballgown_WE-f-af-240-1/WE-f-af-240-1_ballgown.gtf /public/home/ccli/zhaowenjuan/samtools_sort/WE-f-af-240-1_unique_sorted_1.bam"
+
+sqsub -j WEa-2 -t 4 -c "stringtie -e -B -p 8 -G /public/home/ccli/zhaowenjuan/String_tie_merge/stringtie_merged.gtf -o /public/home/ccli/zhaowenjuan/Ballgown/ballgown_WE-f-af-240-2/WE-f-af-240-2_ballgown.gtf /public/home/ccli/zhaowenjuan/samtools_sort/WE-f-af-240-2_unique_sorted_1.bam"
+
+sqsub -j WEl-1 -t 4 -c "stringtie -e -B -p 8 -G /public/home/ccli/zhaowenjuan/String_tie_merge/stringtie_merged.gtf -o /public/home/ccli/zhaowenjuan/Ballgown/ballgown_WE-f-ldm-240-1/WE-f-ldm-240-1_ballgown.gtf /public/home/ccli/zhaowenjuan/samtools_sort/WE-f-ldm-240-1_unique_sorted_1.bam"
+
+sqsub -j WEl-2 -t 4 -c "stringtie -e -B -p 8 -G /public/home/ccli/zhaowenjuan/String_tie_merge/stringtie_merged.gtf -o /public/home/ccli/zhaowenjuan/Ballgown/ballgown_WE-f-ldm-240-2/WE-f-ldm-240-2_ballgown.gtf /public/home/ccli/zhaowenjuan/samtools_sort/WE-f-ldm-240-2_unique_sorted_1.bam"
+
+sqsub -j WEli-1 -t 4 -c "stringtie -e -B -p 8 -G /public/home/ccli/zhaowenjuan/String_tie_merge/stringtie_merged.gtf -o /public/home/ccli/zhaowenjuan/Ballgown/ballgown_WE-f-liver-240-1/WE-f-liver-240-1_ballgown.gtf /public/home/ccli/zhaowenjuan/samtools_sort/WE-f-liver-240-1_unique_sorted_1.bam"
+
+sqsub -j WEli-2 -t 4 -c "stringtie -e -B -p 8 -G /public/home/ccli/zhaowenjuan/String_tie_merge/stringtie_merged.gtf -o /public/home/ccli/zhaowenjuan/Ballgown/ballgown_WE-f-liver-240-2/WE-f-liver-240-2_ballgown.gtf /public/home/ccli/zhaowenjuan/samtools_sort/WE-f-liver-240-2_unique_sorted_1.bam"
+
+echo finish at time `date +%F'  '%H:%M`
+代码含义如下：
+# -e 限制reads比对的处理，仅估计和输出与用-G选项给出的参考转录本匹配的组装转录本。使用该选项，则会跳过处理与参考转录本不匹配的组装转录本，这将大大的提升了处理速度
+# -B 应用该选项，则会输出Ballgown输入表文件（* .ctab），其中包含用-G选项给出的参考转录本的覆盖率数据
+# -G  使用参考注释基因文件指导组装过程，格式GTF/GFF3。输出文件中既包含已知表达的转录本，也包含新的转录本
+结果得到一个“******_ballgown”文件夹，每个文件夹中总共6个文件，一个大文件WE-f-ldm-240-1_ballgown.gtf
+注意；在服务器上输wc -l */*.gtf 可以查看每个样品的行数，发现其中每个GTF文件里的行数是一样的
+     此6个样本中的每个GTF文件里行数、外显子起始位置、gene_id和transcript_id都是一样的
+其余5个如下：
+e_data.ctab: 外显子水平表达值 文件名均为首字母缩写
+t_data.ctab:转录本水平表达值
+i_data.ctab:内显子水平表达值
+e2t.ctab:表中有两列，e_id和t_id，表示哪些外显子属于哪些转录本，即外显子与转录本的对应关系。这些id与e_data和t_data表中的id匹配。
+i2t.ctab：表中有两列，i_id和t_id,表示哪些内含子属于哪些转录本，即内含子与转录本的对应关系。这些id与i_data和t_data表中的id匹配。
+    1、e_data.ctab: 外显子水平表达值
+e_id	chr	strand	start	end	rcount	ucount	mrcount	cov	cov_sd	mcov	mcov_sd
+1	1	+	1	961	19	19	19.00	1.0198	2.0862	1.0198	2.0862
+2	1	+	2371	2465	30	30	30.00	15.7579	2.4005	15.7579	2.4005
+3	1	+	3118	3474	66	66	66.00	11.6078	4.5820	11.6078	4.5820
+4	1	-	3472	3558	17	17	17.00	11.2414	1.6745	11.2414	1.6745
+5	1	-	5665	5760	11	11	11.00	3.8542	4.2130	3.8542	4.2130
+6	1	-	10906	10993	19	19	19.00	8.3182	3.3458	8.3182	3.3458
+7	1	-	14814	14998	12	12	12.00	4.2324	3.1768	4.2324	3.1768
+8	1	-	15023	15217	15	15	15.00	5.3641	5.9748	5.3641	5.9748
+9	1	-	18493	18546	10	10	10.00	8.7778	4.1261	8.7778	4.1261
+10	1	-	14814	15217	29	29	29.00	4.5842	4.7943	4.5842	4.7943
+11	1	-	5659	5760	11	11	11.00	3.6275	4.1866	3.6275	4.1866
+12	1	-	18493	18696	39	39	39.00	10.3088	5.6280	10.3088	5.6280
+13	1	-	22046	22136	6	6	6.00	3.5165	1.8538	3.5165	1.8538
+14	1	+	23368	23965	938	938	938.00	90.3963	196.1792	90.3963	196.1792
+    2、i_data.ctab:内显子水平表达值
+i_id	chr	strand	start	end	rcount	ucount	mrcount
+1	1	+	962	2370	11	11	11.00
+2	1	+	2466	3117	17	17	17.00
+3	1	-	3559	5664	0	0	0.00
+4	1	-	5761	10905	10	10	10.00
+5	1	-	10994	14813	9	9	9.00
+6	1	-	14999	15022	0	0	0.00
+7	1	-	15218	18492	13	13	13.00
+8	1	-	18697	22045	3	3	3.00
+9	1	+	23966	27359	232	232	232.00
+10	1	+	27468	30767	210	210	210.00
+11	1	+	30850	33299	264	264	264.00
+ 3、e2t.ctab:表中有两列，e_id和t_id                     4.i2t.ctab：
+e_id	 t_id                                            i_id	 t_id
+1	1                                                      1	  1
+2	1                                                      2      1           
+196207	56669                                              4	  5          
+196207	56670                                              12     7              
+196207	56671                                           155992	 62753                                             
+314160	92139                                           155994 	 62750          
+314161	92138                                           231012   95003           
+314162	92138                                           231014	 95003                 
+即当外显子id是1、2时，属于转录本id为1的转录本,以此类推                  
+ 
+ 5、t_data.ctab:转录组水平表达值
+t_id	chr	strand	start	end	t_name	num_exons	length	gene_id	gene_name	cov	FPKM
+1	1	+	1	3474	MSTRG.8.1	3	1413	MSTRG.8	.	4.592357	2.132232
+2	1	-	3472	18546	ENSSSCT00000042326	6	705	MSTRG.9	TBP	0.000000	0.000000
+3	1	-	3472	18546	ENSSSCT00000065539	5	729	MSTRG.9	TBP	0.707267	0.328384
+4	1	-	5659	18696	ENSSSCT00000046027	4	798	MSTRG.9	TBP	0.782738	0.363425
+5	1	-	5659	22136	MSTRG.9.3	5	889	MSTRG.9	.	5.278262	2.450698
+6	1	+	23368	39931	ENSSSCT00000058189	6	1211	MSTRG.1	PSMB1	139.509232	64.774155
+7	1	+	23853	40113	ENSSSCT00000023500	5	800	MSTRG.1	PSMB1	13.305430	6.177713
+8	1	-	96218	186785	ENSSSCT00000055371	10	2919	MSTRG.12	FAM120B	0.000000	0.000000
+9	1	.	109026	109291	MSTRG.13.1	1	266	MSTRG.13	.	0.000000	0.000000
+10	1	.	110889	111106	MSTRG.14.1	1	218	MSTRG.14	.	0.743119	0.345030
+11	1	-	112763	113499	ENSSSCT00000030275	3	672	MSTRG.15	.	0.132440	0.061492
+12	1	.	116118	117885	MSTRG.16.1	1	1768	MSTRG.16	.	2.378959	1.104551
+13	1	.	118779	119503	MSTRG.17.1	1	725	MSTRG.17	.	0.223448	0.103747
+14	1	-	120860	186785	MSTRG.12.2	12	4058	MSTRG.12	.	2.217575	1.029620
+15	1	-	121145	186748	ENSSSCT00000063290	9	4536	MSTRG.12	FAM120B	1.599233	0.742524
+16	1	-	121146	186770	ENSSSCT00000041397	10	3978	MSTRG.12	FAM120B	0.000000	0.000000
+17	1	-	121147	186716	ENSSSCT00000038814	10	4976	MSTRG.12	FAM120B	2.049843	0.951742
+18	1	-	121147	186777	ENSSSCT00000047009	11	4615	MSTRG.12	FAM120B	0.000000	0.000000
+19	1	-	121192	186726	MSTRG.12.7	10	4569	MSTRG.12	.	0.000000	0.000000
+20	1	-	121192	186726	MSTRG.12.8	11	3847	MSTRG.12	.	0.000000	0.000000
+ 注:t_name这一列后续有用文件包括转录本id、染色体编号、正负链、起始位置、跟参考基因组比对后给转录本、基因命名。后面表达量
+    每个样本中除了cov 和FPKM这两列不一样，前面的每一列内容都一样。
+	
+注意：后续需要把“t_data_**.ctab”文件下载到本地，然后将t_data文件中的FPKM值都总结到一个表中，每一行进行总和
+      然后将求和得到的这一列筛掉总和为0的行，目的是为了筛掉在所有样品中都没有表达的转录本。
+注意： susprotein_coding_参考基因组文件也需要跑ballgown
+脚本内容如下:
+  #!/bin/sh
+#PBS -N ballgown
+#PBS -l nodes=1:ppn=4
+#PBS -l mem=1gb
+#PBS -q batch
+
+echo start at time `date +%F'  '%H:%M`
+
+cd /public/home/ccli/zhaowenjuan/3/ballgown/sus_protein_coding_ballgown
+
+sqsub -j d90-1 -t 4 -c "stringtie -e -B -p 8 -G /public/home/ccli/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/Sus_scrofa.Sscrofa11.1.90.gtf -o /public/home/ccli/zhaowenjuan/3/ballgown/sus_protein_coding_ballgown/d90-1/d90-1_ballgown.gtf /public/home/ccli/zhaowenjuan/3/samtools_sort/d90-1_unique_sorted_1.bam"
+
+sqsub -j d90-2 -t 4 -c "stringtie -e -B -p 8 -G /public/home/ccli/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/Sus_scrofa.Sscrofa11.1.90.gtf -o /public/home/ccli/zhaowenjuan/3/ballgown/sus_protein_coding_ballgown/d90-2/d90-2_ballgown.gtf /public/home/ccli/zhaowenjuan/3/samtools_sort/d90-2_unique_sorted_1.bam"
+
+sqsub -j d90-3 -t 4 -c "stringtie -e -B -p 8 -G /public/home/ccli/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/Sus_scrofa.Sscrofa11.1.90.gtf -o /public/home/ccli/zhaowenjuan/3/ballgown/sus_protein_coding_ballgown/d90-3/d90-3_ballgown.gtf /public/home/ccli/zhaowenjuan/3/samtools_sort/d90-3_unique_sorted_1.bam"
+
+sqsub -j d65-1 -t 4 -c "stringtie -e -B -p 8 -G /public/home/ccli/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/Sus_scrofa.Sscrofa11.1.90.gtf -o /public/home/ccli/zhaowenjuan/3/ballgown/sus_protein_coding_ballgown/d65-1/d65-1_ballgown.gtf /public/home/ccli/zhaowenjuan/3/samtools_sort/d65-1_unique_sorted_1.bam"
+
+sqsub -j d65-2 -t 4 -c "stringtie -e -B -p 8 -G /public/home/ccli/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/Sus_scrofa.Sscrofa11.1.90.gtf -o /public/home/ccli/zhaowenjuan/3/ballgown/sus_protein_coding_ballgown/d65-2/d65-2_ballgown.gtf /public/home/ccli/zhaowenjuan/3/samtools_sort/d65-2_unique_sorted_1.bam"
+
+sqsub -j d65-3 -t 4 -c "stringtie -e -B -p 8 -G /public/home/ccli/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/Sus_scrofa.Sscrofa11.1.90.gtf -o /public/home/ccli/zhaowenjuan/3/ballgown/sus_protein_coding_ballgown/d65-3/d65-3_ballgown.gtf /public/home/ccli/zhaowenjuan/3/samtools_sort/d65-3_unique_sorted_1.bam"
+
+sqsub -j d33-1 -t 4 -c "stringtie -e -B -p 8 -G /public/home/ccli/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/Sus_scrofa.Sscrofa11.1.90.gtf -o /public/home/ccli/zhaowenjuan/3/ballgown/sus_protein_coding_ballgown/d33-1/d33-1_ballgown.gtf /public/home/ccli/zhaowenjuan/3/samtools_sort/d33-1_unique_sorted_1.bam"
+
+sqsub -j d33-2 -t 4 -c "stringtie -e -B -p 8 -G /public/home/ccli/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/Sus_scrofa.Sscrofa11.1.90.gtf -o /public/home/ccli/zhaowenjuan/3/ballgown/sus_protein_coding_ballgown/d33-2/d33-2_ballgown.gtf /public/home/ccli/zhaowenjuan/3/samtools_sort/d33-2_unique_sorted_1.bam"
+
+sqsub -j d33-3 -t 4 -c "stringtie -e -B -p 8 -G /public/home/ccli/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/Sus_scrofa.Sscrofa11.1.90.gtf -o /public/home/ccli/zhaowenjuan/3/ballgown/sus_protein_coding_ballgown/d33-3/d33-3_ballgown.gtf /public/home/ccli/zhaowenjuan/3/samtools_sort/d33-3_unique_sorted_1.bam"
+
+echo finish at time `date +%F'  '%H:%M`
+
+注意：与上面有区别的部分，
+
+#定量方法2
+htseq_count这一条路
+原理：目的:用于reads计数，多用于mapping软件输出的结果
+要求：1、HtSeq是对有参考基因组的转录组测序数据进行表达量分析的，其输入文件必须有SAM和GTF文件
+      2、一般情况下HTSeq得到的Counts结果会用于下一步不同样品间的基因表达量差异分析，而不是一个样品内部基因的表达量比较。
+因此，HTSeq设置了-a参数的默认值10，来忽略掉比对到多个位置的reads信息，其结果有利于后续的差异分析。
+      3、输入的GTF文件中不能包含可变剪接信息，否则HTSeq会认为每个可变剪接都是单独的基因，
+导致能比对到多个可变剪接转录本上的reads的计算结果是ambiguous，从而不能计算到基因的count中。
+即使设置-i参数的值为transcript_id，其结果一样是不准确的，只是得到transcripts的表达量。
+输入的sam格式文件，若是pair-end数据必须按照reads名称排序，所以用samtools对bam文件排序，再转换为sam格式  ???
+提示：这一步利用的是samtools中第一次按名字梳理的文件，通过和我们之前组装的stringtie_merged.gtf文件比对，核实每个基因上都分别比对上多少个reads数,
+不用d33-3_unique_sorted_1.bam,（按照染色体位置排序的），减少内存，跑的快....
+脚本zhaowenjuan_htseq-count3内容如下：
+#!/bin/sh
+#PBS -N htseq
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=2gb
+#PBS -q batch
+echo start at time `date +%F'  '%H:%M`
+
+cd /public/home/ccli/zhaowenjuan/htseq_count
+
+sqsub -j htseq_WE-f-af-240-1 t 4 -c "/public/home/ccli/bin/Python-3.5/bin/htseq-count -s no -f bam /public/home/ccli/zhaowenjuan/samtools/WE-f-af-240-1_unique_sorted.bam /public/home/ccli/zhaowenjuan/String_tie_merge/stringtie_merged.gtf >WE-f-af-240-1.count"
+sqsub -j htseq_WE-f-af-240-2 t 4-c "/public/home/ccli/bin/Python-3.5/bin/htseq-count -s no -f bam /public/home/ccli/zhaowenjuan/samtools/WE-f-af-240-2_unique_sorted.bam /public/home/ccli/zhaowenjuan/String_tie_merge/stringtie_merged.gtf >WE-f-af-240-2.count"
+sqsub -j htseq_WE-f-ldm-240-1 t 4-c "/public/home/ccli/bin/Python-3.5/bin/htseq-count -s no -f bam /public/home/ccli/zhaowenjuan/samtools/WE-f-ldm-240-1_unique_sorted.bam /public/home/ccli/zhaowenjuan/String_tie_merge/stringtie_merged.gtf >WE-f-ldm-240-1.count"
+sqsub -j htseq_WE-f-ldm-240-2 t 4 -c "/public/home/ccli/bin/Python-3.5/bin/htseq-count -s no -f bam /public/home/ccli/zhaowenjuan/samtools/WE-f-ldm-240-2_unique_sorted.bam /public/home/ccli/zhaowenjuan/String_tie_merge/stringtie_merged.gtf >WE-f-ldm-240-2.count"
+sqsub -j htseq_WE-f-liver-240-1 t 4 -c "/public/home/ccli/bin/Python-3.5/bin/htseq-count -s no -f bam /public/home/ccli/zhaowenjuan/samtools/WE-f-liver-240-1_unique_sorted.bam /public/home/ccli/zhaowenjuan/String_tie_merge/stringtie_merged.gtf >WE-f-liver-240-1.count"
+sqsub -j htseq_WE-f-liver-240-2 t 4 -c "/public/home/ccli/bin/Python-3.5/bin/htseq-count -s no -f bam /public/home/ccli/zhaowenjuan/samtools/WE-f-liver-240-2_unique_sorted.bam /public/home/ccli/zhaowenjuan/String_tie_merge/stringtie_merged.gtf >WE-f-liver-240-2.count"
+
+# echo finish at time `date +%F'  '%H:%M`
+
+# -s：表示是否链特异性测序(建库)。该参数的值可以是yes,no或reverse，no表示非链特异性测序(建库)
+#     若是单端测序，yes表示read比对到了基因的正义链上；若是双末端测序，yes表示read1比对到了基因正义链上，read2比对到基因负义链上；
+#     reverse表示双末端测序情况下与yes值相反的结果。
+#     根据说明文件的理解，一般情况下双末端链特异性测序，该参数的值应该选择reverse，但本组是采用非特异性建库。
+# -f: 指定输入文件的格式，可以是sam或bam格式 ，默认是sam格式，我们这里输入的是bam格式的文件
+# -r: 设置sam或bam文件的排序方式，该参数的值可以是name或pos（染色体位置）。前者表示按read名进行排序，后者表示按比对的参考基因组位置进行排序。
+# 若测序数据是双末端测序，当输入sam/bam文件是按pos方式排序的时候，两端reads的比对结果在sam/bam文件中一般不是紧邻的两行，程序会将reads对的第一个比对结果放入内存，直到读取到另一端read的比对结果。
+# 因此，选择pos可能会导致程序使用较多的内存，它也适合于未排序的sam/bam文件。而pos排序则表示程序认为双末端测序的reads比对结果在紧邻的两行上，也适合于单端测序的比对结果。
+# 很多其它表达量分析软件要求输入的sam/bam文件是按pos排序的，但HTSeq推荐使用name排序，且一般比对软件的默认输出结果也是按name进行排序的。 
+# （ 对于双端测序数据，必须要对SAM文件进行排序，对read name或 位置 进行排序皆可，通过 -r 可以指定您的数据是以什么方式排序的： <order> 可以是 name 或 pos(按位置排序) ， 默认是name.）
+# 这里我们直接用前面的在samtools步骤中按name排好序列的“WE-f-af-240-1_unique_sorted.bam”文件就OK，所以指令中没有出现-r这个参数，
+
+ 注意：服务器Python软件出问题了
+ 注意；用Python脚本运行,在服务器上输：Python htseq_count_multi.py 参考文件
+结果生成2个文件，后续用到第2个.count文件内容，结果如下：
+ 1、 e文件htseq_WE-f-ldm-240-1.e2417099 部分结果如下：
+100000 GFF lines processed.
+200000 GFF lines processed.
+300000 GFF lines processed.
+400000 GFF lines processed.
+500000 GFF lines processed.
+600000 GFF lines processed.
+700000 GFF lines processed.
+800000 GFF lines processed.
+812824 GFF lines processed.
+ 。。。。。。。  
+ 。。。。。。。  
+16200000 SAM alignment record pairs processed.
+Warning: 89952 reads with missing mate encountered.
+16205176 SAM alignment pairs processed.  
+  2、其中一个count文件WE-f-liver-240-1.count 部分结果如下：
+ENSSSCG00000000026	0
+ENSSSCG00000000028	2
+ENSSSCG00000000057	0
+ENSSSCG00000000073	3
+ENSSSCG00000000074	0
+ENSSSCG00000000081	0
+ENSSSCG00000000082	0
+ENSSSCG00000000092	1
+ENSSSCG00000000103	5
+.....................
+..................   
+MSTRG.9993	386
+MSTRG.9994	1
+MSTRG.9995	3
+MSTRG.9996	196
+MSTRG.9997	3
+MSTRG.9998	7
+MSTRG.9999	22    上面代表基因id和相应的reads数,到这为止为有效的reads数
+__no_feature	2229955
+__ambiguous	3404009                  模糊不清的/不明确的
+__too_low_aQual	634462
+__not_aligned	0                    没有匹配上的为0
+__alignment_not_unique	0            可以用excel打开将这几项数字做个饼图观察，发现有效的reads数比对率比较高
+文件第一列是gene_id，第二列是统计上的比对到的reads数。
+
+注意注意：每个样本count文件中基因ID一样，后面的reads数不一样
+注意：此时记得把参考基因组里的蛋白编码基因也跑出来，
+/public/home/ccli/zhaowenjuan/String_tie_merge/stringtie_merged.gtf改成/public/home/ccli/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/Sus_scrofa.Sscrofa11.1.90.gtf
+#!/bin/sh
+#PBS -N htseq
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=2gb
+#PBS -q batch
+echo start at time `date +%F'  '%H:%M`
+
+cd /public/home/ccli/zhaowenjuan/3/htseq_count/protein_coding_htseq_count
+
+sqsub -j htseq_d90-1 t 4 -c "/public/home/ccli/software/HTSeq-0.6.1/build/scripts-2.7/htseq-count -s no -f bam /public/home/ccli/zhaowenjuan/3/samtools/d90-1_unique_sorted.bam /public/home/ccli/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/Sus_scrofa.Sscrofa11.1.90.gtf >d90-1.count"
+
+sqsub -j htseq_d90-2 t 4 -c "/public/home/ccli/software/HTSeq-0.6.1/build/scripts-2.7/htseq-count -s no -f bam /public/home/ccli/zhaowenjuan/3/samtools/d90-2_unique_sorted.bam /public/home/ccli/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/Sus_scrofa.Sscrofa11.1.90.gtf >d90-2.count"
+
+sqsub -j htseq_d90-3 t 4 -c "/public/home/ccli/software/HTSeq-0.6.1/build/scripts-2.7/htseq-count -s no -f bam /public/home/ccli/zhaowenjuan/3/samtools/d90-3_unique_sorted.bam /public/home/ccli/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/Sus_scrofa.Sscrofa11.1.90.gtf >d90-3.count"
+
+sqsub -j htseq_d65-1 t 4 -c "/public/home/ccli/software/HTSeq-0.6.1/build/scripts-2.7/htseq-count -s no -f bam /public/home/ccli/zhaowenjuan/3/samtools/d65-1_unique_sorted.bam /public/home/ccli/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/Sus_scrofa.Sscrofa11.1.90.gtf >d65-1.count"
+
+sqsub -j htseq_d65-2 t 4 -c "/public/home/ccli/software/HTSeq-0.6.1/build/scripts-2.7/htseq-count -s no -f bam /public/home/ccli/zhaowenjuan/3/samtools/d65-2_unique_sorted.bam /public/home/ccli/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/Sus_scrofa.Sscrofa11.1.90.gtf >d65-2.count"
+
+sqsub -j htseq_d65-3 t 4 -c "/public/home/ccli/software/HTSeq-0.6.1/build/scripts-2.7/htseq-count -s no -f bam /public/home/ccli/zhaowenjuan/3/samtools/d65-3_unique_sorted.bam /public/home/ccli/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/Sus_scrofa.Sscrofa11.1.90.gtf >d65-3.count"
+
+sqsub -j htseq_d33-1 t 4 -c "/public/home/ccli/software/HTSeq-0.6.1/build/scripts-2.7/htseq-count -s no -f bam /public/home/ccli/zhaowenjuan/3/samtools/d33-1_unique_sorted.bam /public/home/ccli/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/Sus_scrofa.Sscrofa11.1.90.gtf >d33-1.count"
+
+sqsub -j htseq_d33-2 t 4 -c "/public/home/ccli/software/HTSeq-0.6.1/build/scripts-2.7/htseq-count -s no -f bam /public/home/ccli/zhaowenjuan/3/samtools/d33-2_unique_sorted.bam /public/home/ccli/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/Sus_scrofa.Sscrofa11.1.90.gtf >d33-2.count"
+
+sqsub -j htseq_d33-3 t 4 -c "/public/home/ccli/software/HTSeq-0.6.1/build/scripts-2.7/htseq-count -s no -f bam /public/home/ccli/zhaowenjuan/3/samtools/d33-3_unique_sorted.bam /public/home/ccli/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/Sus_scrofa.Sscrofa11.1.90.gtf >d33-3.count"
+
+# echo finish at time `date +%F'  '%H:%M`
+然后用45788lincRNA与用Rstudio的DEseq2跑出来与编码蛋白基因ID取交集
+
+
+
+
+
+
+
+
+
+
+
+#筛选LincRNA的前期准备
+第一步：鉴定LNCRNA的前提：将gffcompare TRACKING文件得到的转录本与stringtie-merged.gtf文件进行比对得到外显子相关信息
+（1）、string tie-merged.gtf文件前两行需要删除并另存为string tie-merged-1.gtf文件放入新建文件夹getseq中
+# stringtie --merge -p 4 -G /public/home/ccli/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/Sus_scrofa.Sscrofa11.1.90.gtf -o stringtie_merged.gtf /public/home/ccli/huangziying/merge/mergelist.txt
+# StringTie version 1.3.4d
+1 StringTie transcript  23368 39931 1000  + . gene_id "MSTRG.1"; transcript_id "ENSSSCT00000058189"; gene_name "PSMB1"; ref_gene_id "ENSSSCG00000027257"; 
+1 StringTie exon  23368 23965 1000  + . gene_id "MSTRG.1"; transcript_id "ENSSSCT00000058189"; exon_number "1"; gene_name "PSMB1"; ref_gene_id "ENSSSCG00000027257"; 
+1 StringTie exon  27360 27467 1000  + . gene_id "MSTRG.1"; transcript_id "ENSSSCT00000058189"; exon_number "2"; gene_name "PSMB1"; ref_gene_id "ENSSSCG00000027257"; 
+1 StringTie exon  30768 30849 1000  + . gene_id "MSTRG.1"; transcript_id "ENSSSCT00000058189"; exon_number "3"; gene_name "PSMB1"; ref_gene_id "ENSSSCG00000027257"; 
+1 StringTie exon  33300 33429 1000  + . gene_id "MSTRG.1"; transcript_id "ENSSSCT00000058189"; exon_number "4"; gene_name "PSMB1"; ref_gene_id "ENSSSCG00000027257"; 
+（2）gffcompare.tracking” TRACKING文件部分内容如下：
+TCONS_00000001	XLOC_000001	TBP|ENSSSCT00000042326	x	q1:MSTRG.8|MSTRG.8.1|3|0.000000|0.000000|0.000000|1413
+TCONS_00000002	XLOC_000002	PSMB1|ENSSSCT00000058189	=	q1:PSMB1|ENSSSCT00000058189|6|0.000000|0.000000|0.000000|1211
+TCONS_00000003	XLOC_000002	PSMB1|ENSSSCT00000023500	=	q1:PSMB1|ENSSSCT00000023500|5|0.000000|0.000000|0.000000|800
+TCONS_00000004	XLOC_000003	DLL1|ENSSSCT00000024788	=	q1:DLL1|ENSSSCT00000024788|12|0.000000|0.000000|0.000000|3291
+TCONS_00000005	XLOC_000003	DLL1|ENSSSCT00000062318	=	q1:DLL1|ENSSSCT00000062318|12|0.000000|0.000000|0.000000|5029
+TCONS_00000006	XLOC_000004	ENSSSCG00000033475|ENSSSCT00000054059	=	q1:ENSSSCG00000033475|ENSSSCT00000054059|7|0.000000|0.000000|0.000000|1620
+TCONS_00000007	XLOC_000005	ENSSSCG00000035944|ENSSSCT00000052221	=	q1:ENSSSCG00000035944|ENSSSCT00000052221|4|0.000000|0.000000|0.000000|1876
+
+首先、从gffcompare文件夹中TRACKING文件里筛选出class_code列为u外行、显子数目大于等于2的行、转录本长度大于等于200的行
+       即（“U”、“exon”>=2、“length>=200” ）
+FOUR注意：第一步筛选过U要记录剩余转录本数，需要记录到文章里
+FIVE注意：第二步筛选过exon>=200和length再记录转录本数，记录到文章里
+
+两种筛选方法：
+方法一是用WPS筛选，首先选中最后一列，点击数据——点击分列——点击按照分隔符分列——点击其他“|”——点击确定
+  选中第四列，点击筛选——并将筛选出的只含"U"内容复制到一个新的WPS表格里保存为transcript_u.txt文件，
+  继续筛选exon>等于2、长度>等于200的列，保存为“transcript_exon_length.txt”文件，将这两个文件放入文件夹“getseq”里
+  最后，挑出转录本ID那一列MSTRG.35代表基因ID MSTRG.35.1代表转录本ID，保存为transcript_id.txt文件
+方法二：采用脚本形式
+#1、挑选u exon>=2 length>=200 的转录本 cat查看文件，如果文件中第4列等于u，打印并输入gffcompare_u.txt 文件中
+cat /public/home/ccli/liqianqian/1/gffcompare/gffcompare.tracking | awk '{if($4=="u") print}' > gffcompare_u.txt 
+
+cat /public/home/ccli/liqianqian/1/gffcompare/gffcompare_u.txt | awk '{if($7>=2) print}' | awk '{if($11>=200) print}' > gffcompare_exon_length.txt 
+一步到位，脚本如下：
+cat /public/home/ccli/huangziying/gffcompare/gf_u_chongfenlie.txt | awk '{if($4=="u")print}'| awk '{if($8>=2)print}'| awk '{if($12>=200)print}'>gf_u_e_t.txt
+注意注意：tracking文件中的列是不明确的，要在本地先将.tracking文件中的列在excel中分开，再上传到服务器中进行筛选，否则不能通过awk准确识别目标列。
+之后在‘gf_u_e_t.txt’文件筛选出包含转录本id的列（在wps中进行就好），得到一个只包含转录本id信息的txt文件，在我的这里是T.txt这个文件
+
+注意：下面这个python脚本在后续的提取转录本ID对应的长度，外显子长度，数量FPKM、及染色体号都可适用，我猜
+
+二、将筛选得到的“transcript_id.txt”文件与“stringtie_merged.gtf”文件比对，目的得到外显子相关信息
+Python脚本gene_position.py的内容如下：
+
+with open('/public/home/ccli/zhaowenjuan/getseq/transcript_exon.txt','w')as f1:           将生成的文件以的gene_position.txt文件形式写出来       
+    with open('/public/home/ccli/zhaowenjuan/getseq/transcript_id.txt','r')as f2:        读取transcrip_id.txt文件内容
+        with open('/public/home/ccli/zhaowenjuan/getseq/stringtie_merged_1.gtf','r')as f3:  读取stringtie_merged_1.gtf内容
+            id_list=[line.strip() for line in f2.readlines()]                   目前理解是读取f2文件的每一行，生成一个id_list列表 
+            for eachline in f3:                                       查找f3文件的每一行  
+                tem1=eachline.split("\"")                      在f3文件中以“”号为分隔符分割每一列，这里看从看见第一个“号之后算第一列 
+                if tem1[3] in id_list:       按照上面的规则，我们的准录本id在第三列，并且如果这一列中某一行的信息和我们之前生成的id_list列表中某一行的信息 
+                    f1.write(eachline)        一样就把这一行打印出来写到f1文件中
+重大注意：python软件有时会出现问题，脚本路径信息要重新改动,使用Python2.7 或3.7版本均可，命令如下：
+先转到Python软件中cd /public/home/ccli/bin/Python-2.7  再输入脚本命令python /public/home/ccli/zhaowenjuan/2/getseq/transcript_exon2.py  
+
+生成文件transcript_exon.txt包含了转录本和外显子相关信息，结果如下：
+1	StringTie	transcript	226571	227566	1000	-	.	gene_id "MSTRG.3"; transcript_id "MSTRG.3.1"; 
+1	StringTie	exon	226571	226830	1000	-	.	gene_id "MSTRG.3"; transcript_id "MSTRG.3.1"; exon_number "1"; 
+1	StringTie	exon	227383	227566	1000	-	.	gene_id "MSTRG.3"; transcript_id "MSTRG.3.1"; exon_number "2"; 
+1	StringTie	transcript	1753684	1756824	1000	+	.	gene_id "MSTRG.35"; transcript_id "MSTRG.35.1"; 
+1	StringTie	exon	1753684	1753961	1000	+	.	gene_id "MSTRG.35"; transcript_id "MSTRG.35.1"; exon_number "1"; 
+1	StringTie	exon	1756033	1756824	1000	+	.	gene_id "MSTRG.35"; transcript_id "MSTRG.35.1"; exon_number "2"; 
+1	StringTie	transcript	1779816	1802555	1000	+	.	gene_id "MSTRG.37"; transcript_id "MSTRG.37.1"; 
+1	StringTie	exon	1779816	1779863	1000	+	.	gene_id "MSTRG.37"; transcript_id "MSTRG.37.1"; exon_number "1"; 
+1	StringTie	exon	1801692	1802555	1000	+	.	gene_id "MSTRG.37"; transcript_id "MSTRG.37.1"; exon_number "2"; 
+1	StringTie	transcript	1758231	1762834	1000	+	.	gene_id "MSTRG.40"; transcript_id "MSTRG.40.1"; 
+1	StringTie	exon	1758231	1758543	1000	+	.	gene_id "MSTRG.40"; transcript_id "MSTRG.40.1"; exon_number "1"; 
+1	StringTie	exon	1761313	1762834	1000	+	.	gene_id "MSTRG.40"; transcript_id "MSTRG.40.1"; exon_number "2"; 
+
+三、挑出仅含外显子的行并新建个文件夹命名为“only_exon.txt”，下面是挑出只有外显子信息的命令
+cat /public/home/ccli/huangziying/getseq/transcript_exon.txt | awk '{if($3=="exon")print}' > only_exon.txt
+提示：用wps筛选第3 列也可以快速得到结果
+此文件部分内容如下：
+1	StringTie	exon	109188261	109189081	1000	+	.	gene_id "MSTRG.1646"; transcript_id "MSTRG.1646.1"; exon_number "2"; 
+1	StringTie	exon	109185933	109187537	1000	+	.	gene_id "MSTRG.1646"; transcript_id "MSTRG.1646.2"; exon_number "1"; 
+1	StringTie	exon	109188261	109189081	1000	+	.	gene_id "MSTRG.1646"; transcript_id "MSTRG.1646.2"; exon_number "2"; 
+1	StringTie	exon	109675850	109676397	1000	-	.	gene_id "MSTRG.1687"; transcript_id "MSTRG.1687.1"; exon_number "1"; 
+1	StringTie	exon	109676418	109676568	1000	-	.	gene_id "MSTRG.1687"; transcript_id "MSTRG.1687.1"; exon_number "2"; 
+1	StringTie	exon	113683184	113683432	1000	+	.	gene_id "MSTRG.1921"; transcript_id "MSTRG.1921.1"; exon_number "1"; 
+1	StringTie	exon	113686219	113690044	1000	+	.	gene_id "MSTRG.1921"; transcript_id "MSTRG.1921.1"; exon_number "2"; 
+1	StringTie	exon	113683184	113683432	1000	+	.	gene_id "MSTRG.1921"; transcript_id "MSTRG.1921.2"; exon_number "1"; 
+1	StringTie	exon	113686123	113689948	1000	+	.	gene_id "MSTRG.1921"; transcript_id "MSTRG.1921.2"; exon_number "2"; 
+
+四、将“only_exon.txt”文件与参考基因组序列信息比对，得到这些外显子中具体的序列信息，
+注意：脚本merge_exon.pl和文件get_position_seq.pl是复制过来的，文件内容如下：
+ 1、脚本get_position_seq.pl文件参与下面提取外显子信息步骤，内容如下：
+ #! /usr/bin/perl 
+use Getopt::Long;
+GetOptions(
+         'Position|p=s'           => \$inputfile1,                 #代表参数传递到inputfile1中
+         'Seq|s=s'               => \$inputfile2,
+         'o=s'                   => \$inputfile3,
+         'help|h!'              => \$help,
+
+      
+);
+%seq=();
+$chr="";
+if($help){
+print "###################################################################\n";
+print "usage perl get_position_seq.pl -p position.file -s seq.file -o getseq.fa\n";
+print "######input position file is the format(or bed):\n" ;
+print "######CHRM    start(1 as start) end\n";
+print "Options:\n";
+print "    -p:the input position file\n";
+print "    -s:the fasta sequence file\n";
+print "    -o:the output sequence file\n";
+
+
+}else{
+	open (IN2, "<$inputfile2")|| die "cannot open $inputfile2:$!";
+
+	$seq_temp="";
+	while (<IN2>){
+		chomp;
+		$temp=$_;
+		if($temp=~/>/){
+			$temp=~/>(.*?)\s+/;
+			$chr=$1;
+			$seq_temp="";
+		}else{
+		  $seq{$chr}.=$temp;
+		}
+	}
+#	if($chr){
+#		$seq{$chr}=$seq_temp;
+#	}
+	open (IN1, "<$inputfile1")|| die "cannot open $inputfile:$!";
+	open (OUT, ">$inputfile3")|| die "cannot open $inputfile:$!";
+	
+	
+	while (<IN1>){
+		chomp;
+		$temp=$_;
+		@tmp=split(/\s+/,$temp);
+		
+	  $newseq=substr($seq{$tmp[0]},$tmp[3]-1,$tmp[4]-$tmp[3]+1);
+		print OUT ">$temp\t$newseq\n";
+	}
+	close IN1;
+	close IN2;
+	close OUT;
+}
+四、这一步目的得到外显子转录本序列信息，利用下面的Perl脚本参照参考注释基因，并输出“fa”格式文件
+文件少可直接在服务器上跑
+perl /public/home/ccli/zhaowenjuan/getseq/get_position_seq.pl -p /public/home/ccli/zhaowenjuan/getseq/only_exon.txt -s /public/home/ccli/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/Sus_scrofa.Sscrofa11.1.dna.toplevel.fa -o getseq.fa
+脚本如下：
+#!/bin/sh
+#PBS -N getseq
+#PBS -l nodes=1:ppn=4
+#PBS -l mem=1gb
+#PBS -q batch
+
+# echo start at time `date +%F'  '%H:%M`
+
+cd /public/home/ccli/zhaowenjuan/getseq
+
+sqsub -j merge -t 4 -c "perl /public/home/ccli/zhaowenjuan/getseq/get_position_seq.pl -p /public/home/ccli/zhaowenjuan/getseq/only_exon.txt -s /public/home/ccli/yaoli/reference_genome/ssc_ref_Sscrofa11.1/ensembl/Sus_scrofa.Sscrofa11.1.dna.toplevel.fa -o /public/home/ccli/zhaowenjuan/getseq/getseq.fa"
+
+# echo finish at time `date +%F'  '%H:%M`
+
+# -p 后面是外显子位点信息文件
+# -s 后面的序列文件信息
+# -o 后面是输出的结果文件
+结果得到了getseq.fa文件，部分结果如下：
+>1	StringTie	exon	226571	226830	1000	-	.	gene_id "MSTRG.3"; transcript_id "MSTRG.3.1"; exon_number "1"; 
+	ACTGTGGGAGGTTTTATTTTTGCCGCGTTGTGGTGAAGGAAGCCACCGGTTCGAGCTCCCTGGAGACGCCGAAGCCCCCCCACCCTGTGCTCTGGCCCTGGGACGGACGGGAGCAGCTGACTGCACAGCGCCGGGACCCGCTTTCCAACCGGATGAAATCCCCACAGGCGAGCACGTCCTCCAGTGTTGGCAGCTCACACCCCTGGACTTGGGAGGTGGCCCCCGGGGGGAGCTGGGGGGGCATCTTACATGCCCTTCAC
+>1	StringTie	exon	227383	227566	1000	-	.	gene_id "MSTRG.3"; transcript_id "MSTRG.3.1"; exon_number "2"; 
+	CTGATGAGCTGGAAGCTGCCGTCTCTGTCTCTCGTGTCTCGGAAGGCAGGTGAGACAGTGGGCTGATGAAGCTCAGTGCTGTGAAGGGCTCTCCTCTGGTCTCCACTCGGGTTAGTGTCTTGTCCTCAGTGGCCCAGCGCCTGAGAAGTCCTGCTCCTGAGCAGCAGTGACTCTCCCGTCTCTG
+>1	StringTie	exon	1753684	1753961	1000	+	.	gene_id "MSTRG.35"; transcript_id "MSTRG.35.1"; exon_number "1"; 
+	TAAAAGAGAGAGGTTACGTGACACATATAGTCACGTATTGTGTAAGATCTGACTACAACCTCCTGTTGGCAATGAGAACAAGCACATGCGGTGACTGCTGGCCACGGGGGGGAGCAGAGAAAAGCCCCAAAGATTCCAGCCCCCAGCCTCGTTTATCTGCGCTGTCACCCCAGGCCCACGGGAGTTTGCAGTGGTAGAAAGACGGGAAGATGGAAGATTGTGTCGCTGAAACTCAAGGCAGAGATAGCAGTGGCCTCAACACACCCTCGGATAAGGAG
+>1	StringTie	exon	1756033	1756824	1000	+	.	gene_id "MSTRG.35"; transcript_id "MSTRG.35.1"; exon_number "2"; 
+	GTCCGGATTCTGGGCGGACACAGGTGGACAGTCCTCGTCCTTGTTATGGGGAATGTCTGGTCCAAGAGGAGACACACACACAGGTCTGCGCGGGTGAGGGATGTGGTGAGTTCTGCCACAGGTCAGGCATGGAATATTCTAGAACTCAGAAGAGGGACGTTTTGGGCAGCGTCCTGGAGGAGATGCAGGTGTACAGACCAGTGGAGAAGGAAAAGAAACCAGCTAGGAGAGTAAGCAGAATGTGATGAGGGGCGTGGAGCTGTGTGTGGGCTGCGAGGGCTCAGGGTGGGTGGGCGAGGAGGAGAGGCTGGAGCCTGGCCCGGGGGCCGGGAGCGTTCTCAGCTCCTGGAATGGGGCCTGGATCCCAGGGGCACCTGCAGGGATGGATTAGAGGGGAGCTGACTGGAGGGGCCTCCTAGACCAGGCGAATGAGCAGGGGGCTCCCGGAGGGCCAGCTACGTGGGAAGGAGCAGGGCTGGGGACAGATCCCTTGGGGCTCACCCAGGGAGAGGGGTCGCCGCTCTGAGGGGAGGCTGTTGGGAGGAGACCCCGTGCCCTGACGAGCTCTGCCCCGGAGCCAACAGTGCCCGGCTCAGCTTCGCTTTCTGTGATCCTGCTCGGAAGCCACACTTGCCGTCTGGCGCTGCCCTGCACGCGGGCATTGAGCACCTACAGGTGAGCAGCAGGTGGCCGGTTCCAGGCACTGAGGAAGGAAAGAAGGTTCCAGCAGACGCCTCAGGTGGCAGAGCTGAAAGGCCCGGCCCGGTCAGCGTTCATTGTTGCTGCCTCTGT
+>1	StringTie	exon	1779816	1779863	1000	+	.	gene_id "MSTRG.37"; transcript_id "MSTRG.37.1"; exon_number "1"; 
+	GAATGGGTACGTTCTCTCCTCGCCTGTTTTCGTTGCTGCTGCAGACGG
+>1	StringTie	exon	1801692	1802555	1000	+	.	gene_id "MSTRG.37"; transcript_id "MSTRG.37.1"; exon_number "2"; 
+	GTTCTTTTCTACACCATGAAAATTCCTCCGCAGTGAAACCTGTTTCTCAGGTCCCACCGGACGTCCGCCAGGGGTACCTCCACTTTCCTCAGGTGGGACGTCCCTGTCGTCTGCTCTGGGTCCGAAATGACCTCCCCTCCCGCTGTCCCCTCGTTGTCGTCTGTCATTGTCCTGCCGATGACCAGTTTCTGGGGGGCGTCCAGGCACACGCCCCATGGATGGAACCCTTGGAGCCGGTGACTCCCAATTTGTCTACGAATCCCAGAGCGGCACGTCGTGCCAACGGATCCGATGTGCTTGAACTCAGGCGCCCAGACAGAAACCCGAAAGGAAGGGACCTTGAGATGCGGTGGTGTTTACACCGCCCAAGGGATCATCTTCCGCAGCCCGGGGGGCACCCCCCAGCCGCCCGTCCGCAGAGAGCAGAGCCTCAGGGGAGGGTCTTCCAGGGGCGCTGCCCTCAGAATAAGTCCACTTTAGAAAAGTGGCTTTTGCTCAGCTTTCTCTGGCTCTTTATTGATTTCTCTCTCTCTCTCTCACTCCTTGGAGTGGAAGCGTAGACTCGGCAACCTTTGGGGGCGTCTTCTGTGATTCTTCCATGAGGCTGTGGAATTTCCTCCCGCTCCTCCCTGGCCGCTCTTTGCTGACGCTCGCTCTGGAAGAGGGGCTTGCTGACTAAAGCGCCTCGAGCCTACGGATCCCGGTGCTGTTTTAGCACGAACCTGGGCAGGTGCGTCTGCAATTCTCTTCTCCTTTCCTGGACCGCTTGTGTCATTACCACTGTTGTTGTTATTACCAGTGGCTCTCAGGGGCTTTATGAATTATTTTCTCCCATATCTTTTTCTTTTTTTTCCTTTTTTTTTT
+>1	StringTie	exon	1758231	1758543	1000	+	.	gene_id "MSTRG.40"; transcript_id "MSTRG.40.1"; exon_number "1"; 
+	GGTCAGAGAGCCCACACTTGTGCAAACACTGAGACAAGGGCAGGGCCCACTGGGAATTGGCCAAGGCCGGGAGGGGCTGAACTCGCAGCGCTTTGAAGACGTGCCCGCCTGCGGTCTGCAGACCAAACGCTGCTGGGGTCTGGGTCCAAGGCCCGGGGTCTCTGAGGACGCACCTCCTTCCCAGCCCATCCCTGTGCCCTCCGGGAGTGCCCTCCCTCGAGCGTCAGTGCCCAGGGAAGGATGGCTCCCCAGGCCTCCCCAGTCGGGTGACACCTTGGGGGGGCTGTCGGCACAGGTGACACAGGCAGCACAG
+>1	StringTie	exon	1761313	1762834	1000	+	.	gene_id "MSTRG.40"; transcript_id "MSTRG.40.1"; exon_number "2"; 
+	GTGATTCGGCCAGCCTCTCTGTACGTCTCCGCGCCTGTGAAAGGAGGCTGGGGTAACGCACCGCTTGTGAAAAATCAAGAAAGATCATGGATTTGGAACACTTCACAGACATTGCTCTATGTGCAGACTATGCAAGTTACGGGTGAATTACTATGATGAAAGATTGTTGTATTGTGTCATTGCTGAATCAAAGTTTAAGATCAGTAAACTGGGAATGTAAGCTGGTACAACCACTATGGAGAACAGCATGAGGTACCTCAGAAAACTATACGTAGAACTACCATATGACCCAGCCATCCCACTCTTGGGCATCTATCCGGACAAAACTTTCCTTGAAAAAGACACATGCACCCGCATGTTCATTGCAGCACTATTCACGGCAGCCAAGACATGGAAACAACCCAGACGTCTGTTGACAGATGAATGGATTAGGAAGATGTGGTATATATACATAATGGAATACTACTCAGCCATAAAAAAGAACAAAATAATGCCACATGCAGCAACATGGATGGAACTAGAGACTCTCATACTAGGTGAAGTCAATCAAAAGAGAAAGACAAATACCAGATGATATCACTTATATCTGGAATCTAACATACGGCACAAATGAACCTTTCCGCAGAAAAGAAAATCATGGACTTGGAGAACAGACTTGTGGTTGCCAAGGGGGAGGGGGAGGGAGTGGAATGGACTGGGAATTTGGGGTTCATAGACACAAACTATTGCCTTTGGAATGGATCAGCAATGAGATCCTGCTGTGTAGCACTGGGAACCCTATGTAGTCACTTATGATGGAGCCTGATAATGGGAGAAAAAAGAATGTATACATGCACGTGTGACTGGGTCACTTTGCTGTACAGTGGAATCCTGACAGAACACTGTAAACCAGCTATAATGGAAAAAATAAAAATCATTATAAAAAAAAGATCAGTAAAACCAGAGAGTGTGACAGGTGCACTTATGTTGCAAGAATAGCCAGGAAAAAGAGCCAAGAGGGAAAATGTGTGATTTCAGATGCCAAAACATAGCATTGAACCAATGGGATGCAGGAGTGAACAAAAAGCATTTTAATAACAGAGACTAGAGATTCTAGATTCAATTCAAATTAGTAAGGGAAACTGTAGATTATTTAATAAATAATAGCAGGACTATTGTCTATTAAATAAATAATAGTCTGTTTGGAGGAAATGCTAGATTTTAATTCACAATCTTTATGAAAATAATTTTCAGATAAAAAAACTGAACGTTGTTCTGTGATAATCTACATGGGAAAAAATTCTGTGTATGTCCGGGTCACTTTGTTCCATCTCTAGCTGAATCGGCCCCCTTCAGACAGCTTTCCTGGAAGCCCGTGGCCATCCTTAAGGCGGGAGCTGGAAGCACAGTTTCACAGAAGATGGGTTTCTGTTTGCAACTTGTAGGACTTTTGTGGCCGAAGGGAACGAATGGCTCTTGGGTTCATGGTCATGGGTGCCTGGATCCAGCTCCTGATGTGGGAGATACAAGCCTCTCCCTTGTC
+>1	StringTie	exon	1758231	1758543	1000	+	.	gene_id "MSTRG.40"; transcript_id "MSTRG.40.2"; exon_number "1"; 
+
+五、然后利用的merge_exon.pl这个脚本中输入的是getseq.fa格式的文件
+输入下面的指令，合并之前的外显子，将同一个转录本下的所有外显子序列合并到一个完整的碱基序列
+perl /public/home/ccli/zhaowenjuan/3/getseq/merge_exon.pl
+
+2、脚本merge_exon.pl文件目的将下面生成的getseq.fa文件只保留转录本名称和序列两部分，注意此文件名称不要改，内容如下：
+#!/usr/bin/perl 
+open (IN, "getseq.fa")|| die "cannot open :$!";                     #输入文件名为getseq.fa
+
+%hash=();
+while (<IN>){
+	chomp;
+	@temp=split(/\t/);
+	$temp[8]=~/.*gene_id \"(.*)\".*transcript_id \"(.*)\"; exon_number.*/g;
+	$key="$temp[0]\t$1\t$2\t$temp[6]";
+	if(exists $hash{$key}){
+		$hash{$key}=$hash{$key}."$temp[9]";
+	}else{
+		$hash{$key}="$temp[9]";
+		
+	}
+	
+}
+open OUT,">final_seq.fa" or die "$!";
+foreach $key (sort keys %hash){
+	if($key=~/\+$/){
+	    @tmp=split(/\t/,$key);
+		print OUT ">$tmp[2]\t$tmp[3]\n$hash{$key}\n";
+		
+	}else{
+		$hash{$key}=~tr/ATCG/TAGC/;
+		$temp=reverse($hash{$key});
+		@tmp=split(/\t/,$key);
+		print OUT ">$tmp[2]\t$tmp[3]\n$temp\n";
+	}
+	
+}
+close OUT;
+close IN;
+
+最后得到‘final_seq.fa’这个文件部分结果如下：
+>MSTRG.1126.1	+
+CTGCCTTCTGCTGGCCTTAGGGGAAAAAAAAAGTGAGGTCATATTTGATGTCCTTTTCTTTGGCTAGAAATCTGAACTGGTCTTTGGAAATACAAGGTCTTAACAAGGATGGTGTATGCTTTGGACTTTGGCATTTCCATGATGAGTTTAGGACTTTGGCTCCTTCCCAGACTGTACATGCTGAGACCTTGGGGAGCACGGCTTCCAGTCAATGTGCCTGGATCTCCTCTCTTCTCTTCTGCCTGTCCCTGCCAGCCCTCCTTCACTCCAGACTCCCTGTCAGCCCTCCCTCACCTCCAGACTCCCTGTC
+>MSTRG.1335.1	-
+GGGCTTGAGGCCGGCCCGGCGTGCCGGGGGCGCATTGGGTAGCCAGGGTCGGCACGTTTGGGCCCCCCGCCAAATTTGTTTCCGGTTTCCGGGTTGTGACCTGGTAGCGGAGACCGACGGGACAGATTCGCGTCTTAGTGCTGGCTAGTGACGGGTCCTAGGTGATTTGTACGGTTCTCGAACCTTCAAGTTCTTGACGTCCCATGGGAGTGTGGGCAGAAGAGCAGAAGTTCTAGTACTGGATCGGGCTGAATAGCCTCAGAGAATCTGGGGAGAAATCAACTCAAAGTCCGTAGACCTTAGTTCTAGATTCAGATCTCTAGGCTTCGCTTTTGAATTTGTAAAATGAACTCGGCTTAATATAGATCCAAATATGTCTGATAGCATATTTCTGTGAATTGAAGAAATGGGTGTTTAAGTTTCTTTAACAGTTTTGTTCATCGCAGCAGTTACGGAGGATTATCAAAGAACTGTTATGACACAAGCTAAGGAAATGGCTTAACAGAATGCTTTTGAGGAAAGACTGCTAATTAGCTATTTGTGTTTATAAGAAACGTGGTTGTATTAAGTTTTTTTTAATGCAAAAAAAA
+>MSTRG.1413.1	-
+GCTGGCGGGGCGTCCCCTTGCGAGGCTGTCCCTGCTCCTGCTGTCTCTAAGGAGAGTGATGCTACAGACCAATGTGAGGGATGCCACAGACCAAGGTGGGAGCTGCTTGTATTTCTTGCTACTATGTTGTCAGTGATTCCAGGCACAGAGGAGGTCTACAGGAACATCATGACCTGACCTCTGTTGGCAGCTACAAGAACAAAGGATTTCTGCATCAAGTTTGCAACAGGAGGGAGTTCCCATCATGGCGCAGTGGTTAACGAATCCGACTAGGAACCATGAGGTTGCGGATTCCATCCCTGCCCTTGCTCAGTGGGTTGATGATCCAGCATTGCCGTGAGCTGTGGTGTAGGTTGCAGACGCGGCTGGGATCCCACGTTGCTGGGGCTCTGGCGTAGGCTGGCGGCTATAGCTCCCATTCAACCCCTAGCCTGGGAAGCTCCATATGCCGCAGGAGCGGCCCAAGAAATAGCAAAAAGACCAAAAATAAATAAATAAATAAATAAATAAAAATAAAAAAGTTTGCAACAGGAGTTCCCATTGTGGTACAGCGGAAATGACTAGTAACCATGGGGTTGTGGGTTTGATCCCTGGCCTCTCTCAGTGGGTTAAGGATCTGGCATTGCCATGACCTGTGGTGTAGGTCGCAGATGTGGCTCGGATCCTGTGTTGCTGTGGCATGGATGGACCTAGAAACGATCATGCTAAGTGAAGTGAGCCAGACAATGAGACACCAACATCATATGCTCTCACTTACATGTGGAATCTAAATAAATGACACAATGAACTAATGAACTTCTTTGTAGAGCAGATACTGACTCACAGACTTTCAAAAACTTATGGTTTCCAAATGAGACCGGGTGGGGGTGGGGGGATGTGCTGGGAGTTTTGGATGGAAATGCTATAAAATTTGGTTGTGATGATCATTGTACCACTATAAGTGTAATACAATTCATTGAGCAATTAAAAAAAAAGTTTGCAACCAACCACGCCCCTCCCTCAGTTGGCCTTTAAAAATGCTTTGCAATGTTGGTTCCAAAGTTTGAAGTTCGGGATATTTTGGGGGTATGAGCCACTGGTGTCCTTGCACGGCCATGCAATAAACCTTTCTCTGCTC
+>MSTRG.1587.1	+
+ACCGTAGCGGGCCGCTGGCTGGGGCCCAAGGCCCGCAACTTCCGTGTTGCCATGTTGTCTCCAGGCACTTTTGCCTTTCCACACGTGGTCTTAACATTTCCGGTTCTGCGCGGCACCTCCCCTGTGAGTAAGGGAGGCTGGATCTCAGGCTTGTTTGAGCACAGCTTTCCGTGCGTTATCTTGGAGCAAGCGCGCAGGCTTCTTTAGCGCTTTTTTATGCACTAAAGTTATTTGCTCCTCAAGACGTTTCGAAGAGAGAAGAGGCAAAAATCACTAAAGAGAATGGAAGAAAGGCTTGATCATTTTGCAAGGCCCATACTACATGGCTGAGAAATCAACTACTACAGGAGAGAAACTACTACAGGAGAAAATCGACTACCACAGGAGCAAAACAGTGCAGTTTGACTCCTGCACTGTTCAAGCCTTCCTGAAAAGCATACTTGGTCTCTAGCTGCGTCACCATTTTGGCTGCTGGGGTCTGATGAGCAACCTTGTGGAAGAAGAGACAGAAGCAGATCCAGAGTGGTGGATGGAACTCTAAACTACATTGATTTTACTCTTGTAATTTGAATATGACAAAAAAAGTAATTCCATACAGACAAGAGTACATAAAAAAATGATTTAACAACTTTATTAAATATATTTGATACACTAAACAATTCAGTCATTTAAAGTGTGCATTTAATTGGCTTTTAATAAGTTCATAGATTTGTGCGACCATCAGTGCAACCAATTTCAGAGCATTTCTTTTTTTTTTTCAGGGTCGCATCCACAGCATATGGAGGTTCCCAGGCTAGGGGTCTAATTGGAGCTGTAGCCGCCAGCCTACGCCAGAGCCACAGCAACATTAGATCCAAACCGTGTCTGTGACCTATACCACAGCTCATTGGCAATGCTGGAGCCTTAACCCACCGAGCGAGGCCAGGGGTCAAACCCACAATCTCATGGTTCCTAGCTGGATTTGTTATCACTGGGCCATGACAGGAACTCCTCCCAATTTCAGAGCATTTCTATAATCCCCAAAAGAAACCCTGTTACCCTTTAGAGGCACCCCTCAAATCTACCAACAACTACCCCTGCCTTAATTTCTTTCTCTGTAGACTTGCCTGTTCTGGACATTCATATAAATGGAAT
+>MSTRG.1596.1	-
+TGCGGTGTACTCGGCGTAATCGCATGCGCTGGGTTTCCCTCAAGTAACTTTCCTTGCTGACGACAGAGTTGCTCTCTAAAGTTGGGGTGTCCCAGTAGACGCTGGCCCGAAAGCCGTTCTCGGGCCTCATCGGCGGCTGCAGCCCCATCCGAAATGCAGCACTGGGTGAGACACCCCGTGCTCTGGAGACCGCAGAGCTCGCCCTTGGAGAAGAACCGCTGGATTTCACTTTGAACTCTCTCCTGCTTGCGCACCTGGAAATTCCTGGCAGTGATCAAACCTGCACCACAGCAGTAACCAGAGCCACAGCAGTGACAATACAAGATCCTTAACCCCCTGCACCACAGTGGTAACTCTCTTGGCTATTTTTTTTTTTTTAATGTATCTGTATGAGATGATGGACGTTCACTAAACTTATTGTAATCATTTCATGATGTATGCAAGTCACATCATTATGCTGTATACCTTAAACTTATACAGTGCTACTGTGTGTCAATTATATCTCAAT
+>MSTRG.1596.2	-
+GCCTCAGAGCAGCAGGAAGCACAGAGTGGAGGATCCAGCAGGGAAAGCCTCTTCCTTCACCAGAGGACTTAGCCAACCTCAGCACCTGGAAATTCCTGGCAGTGATCAAACCTGCACCACAGCAGTAACCAGAGCCACAGCAGTGACAATACAAGATCCTTAACCCCCTGCACCACAGTGGTAACTCTCTTGGCTATTTTTTTTTTTTTAATGTATCTGTATGAGATGATGGACGTTCACTAAACTTATTGTAATCATTTCATGATGTATGCAAGTCACATCATTATGCTGTATACCTTAAACTTATACAGTGCTACTGTGTGTCAATTATATCTCAA
+>MSTRG.1626.1	-
+ATTGTGGTCATATGTCCTCTGAATCCCTGGATCTTCAAGGAAGAAAAGAGGATGGAGCCTGAGATCTCACCTGACTTCAAAGCTGGTTTCAGCCCACAGTGGGAATTTAACAAGAGCAGCTGAAATCCAGTGAAGATGCTCCCTCAGTGCGGCTGTTTGGAAGAAGCTGTCTGACCTCTCATCTCTCTCTGAACCATCCTTCCCACCAGCAGCCTAGAAAGAGCCCAGACTGTTCCCACGAGTCATCTTTGGGGAAAATGTATCATTCCTCTGAGGTCTTCTTTATGGAATCTTTATCACCCGGGGCAGGTCATACCTGACTTGGCAGCTCTGCAAGGCTACAAATATCAAGGCAGGAAACCCACCACGCAAAAGTCACATCTAAACCTTTGCTTGTTTGTATCTAGTCCTTAACAAGAATTTACAAAAATATTGACCTATGTC
+>MSTRG.1646.1	+
+CACACAGGGTGAGCTGTTGTTAGTCTTATTTTTGATTGCTGTGTGCGGCCATCCCTGCCTGGGAGGTGGCATGCAGAGAACGTCCAACTGCCAGGGACGTGTCACAGGGGACTTGCCGTGGCCTGTGATCCTGGAGAGTGTGCCCAGGGGCCAGTTCTGGGGGCCTGAGTGAAAGGTGGGTTTTACTGAACTTCAAGGTATCAGCACTACCGGACATTCAAAGCAAGACTCTGGGAGTTCCCATTGTGGTGCAGTGGAAACAAAGCCAGCTGATATCCATGAGGATGCGGATTCCATCCCTGGCCTCCCTCAGTGGGTTAAGGATCTGGCCTTGCCGTGAGCTGTGGTTTTAGGTGGCAGACTCGGCTTGGATCCTGCATTGCTGTGGCTGTGGCTGTGGCCTGCAGAGCCACAGCTTTGATTAGATCCTTAGCCTGGGACCTTCCCATATGCTGTGAGGGTGGCCCTAAAAATAAAAAATAAAATAAAATAAAAATAAATCAAAGGGAGACTCTGTTCTTCACCTTCTCTGTCTTCTAGAGGCTGCTTTGTTCCTTGGGTCGAAGCCCCTTTCCCCTGGTCAACTCCAGGAATTGCATCACCTCAACTTCTGCTTTGGCTGTATTTTCTTATCTCCTTCTCTAAGTCTGACCCCCATGCCTTCCTCTTTTGAGGACCTTGTGATTATACTGGGCCCACCCAGGTAATCAAGGATAATCTTCCACTTCAAGATTTTAACCTAACAAAAGCCCCCATTGCCATGTAATATCATATATTTACAGGTTTTGGATATTAGAATGGGAACATCTTTGGGAGTCACTGGTCTATCAGTGTAATCATTAAACCACATCAACGAAAGCATTTTCCTATATTATACTGCCTGGTATCAAAAAGTGACTGAGATCATTCCATGTGCCAAGTGAACGGGATGCCTGCTTGGTGCAACATCAGATCAAATTTTAAATTTTTAAATTT
+>MSTRG.1646.2	+
+
+六、cpc（Coding Potential Calculator） 软件
+目的:预测我们两条链转录本的蛋白编码潜能,并将cpc值>0的转录本删除
+新建cpc文件夹，并将getseq文件夹中的final_seq.fa文件复制到此文件夹里
+在这里使用脚本“zhaowenjuan_cpc-1.sh”预测，脚本内容如下：
+#!/bin/sh
+#PBS -N cpc
+#PBS -l nodes=1:ppn=8
+#PBS -l mem=1gb
+#PBS -q batch
+
+echo start at time `date +%F'  '%H:%M`
+
+cd /public/home/ccli/huangziying/CPC
+
+/public/home/ccli/software/cpc-0.9/bin/run_predict_revised.sh \      --------cpc软件的启动
+/public/home/ccli/zhaowenjuan/cpc/final_seq.fa \                     --------之前组装的包含转录本序列信息的文件
+final_seq_cpc /public/home/ccli/zhaowenjuan/cpc final_seq_cpc        --------这一步生成“final_seq_cpc” 这个文件
+
+echo finish at time `date +%F'  '%H:%M`
+注意：此时有报错
+[blastall] WARNING:  [000.000]  MSTRG.1126.1	+: Unable to open BLOSUM62
+[blastall] WARNING:  [000.000]  MSTRG.1126.1	+: BlastScoreBlkMatFill returned non-zero status
+[blastall] WARNING:  [000.000]  MSTRG.1126.1	+: SetUpBlastSearch failed.
+[blastall] WARNING:  [000.000]  MSTRG.1335.1	-: Unable to open BLOSUM62
+[blastall] WARNING:  [000.000]  MSTRG.1335.1	-: BlastScoreBlkMatFill returned non-zero status
+[blastall] WARNING:  [000.000]  MSTRG.1335.1	-: SetUpBlastSearch failed.
+[blastall] WARNING:  [000.000]  MSTRG.1413.1	-: Unable to open BLOSUM62
+[blastall] WARNING:  [000.000]  MSTRG.1413.1	-: BlastScoreBlkMatFill returned non-zero status
+[blastall] WARNING:  [000.000]  MSTRG.1413.1	-: SetUpBlastSearch failed.
+[blastall] WARNING:  [000.000]  MSTRG.1587.1	+: Unable to open BLOSUM62
+后期再研究
+结果得到“final_seq_cpc” 文件部分内容如下：里面有noncoding（非编码）和coding（编码）的转录本，下一步就是筛选出noncoding的转录本
+MSTRG.1126.1	310	noncoding	-0.847638
+MSTRG.1335.1	590	noncoding	-1.36168
+MSTRG.1413.1	1117	noncoding	-1.15196
+MSTRG.1587.1	1134	noncoding	-1.11496
+MSTRG.1596.1	508	noncoding	-0.915997
+MSTRG.1596.2	338	noncoding	-1.05313
+MSTRG.1626.1	444	noncoding	-0.868273
+MSTRG.1646.1	975	noncoding	-1.03531
+MSTRG.1646.2	2426	noncoding	-0.61793
+MSTRG.168.1	343	noncoding	-1.06175
+MSTRG.1687.1	699	noncoding	-1.11591
+MSTRG.174.1	540	noncoding	-0.884861
+MSTRG.1921.1	4075	noncoding	-0.582256
+MSTRG.33254.2	2381	noncoding	-1.18602
+MSTRG.33256.1	207	noncoding	-1.09255
+MSTRG.33265.2	2495	noncoding	-1.10867
+MSTRG.33269.1	4556	coding	0.439898
+MSTRG.33269.2	4494	coding	0.35799
+MSTRG.33269.3	4791	coding	0.989246
+MSTRG.33269.4	4791	coding	0.974785
+MSTRG.33269.5	4758	coding	0.842883
+MSTRG.33269.6	4721	coding	0.832431
+
+七、通过awk指令，筛选出非编码的转录本，下面两个指令都可以使用，第四列<0也代表非编码
+cat /public/home/ccli/huangziying/CPC/final_seq_cpc | awk '{if($4<0)print}'>noncoding_cpc 
+或
+cat /public/home/ccli/huangziying/CPC/final_seq_cpc | awk '{if($3=="noncoding")print}'>noncoding_cpc
+
+结果文件noncoding_cpc或noncoding_cpc文件部分内容如下：里面都是非编码转录本
+MSTRG.1007.1  339 noncoding -0.698912
+MSTRG.11.1  1389  noncoding -0.724505
+MSTRG.11.2  749 noncoding -0.785576
+MSTRG.1281.1  491 noncoding -1.06512
+MSTRG.1281.2  244 noncoding -0.996127
+MSTRG.1343.1  1615  noncoding -0.827371
+MSTRG.1403.1  1742  noncoding -0.652152
+MSTRG.1403.2  233 noncoding -1.03549
+MSTRG.1404.1  1575  noncoding -1.14121
+MSTRG.1409.1  975 noncoding -0.961293
+MSTRG.1415.5  1559  noncoding -0.669275
+MSTRG.1433.11 624 noncoding -0.939907
+将得到的noncoding_cpc转录本文件下载到本地，通过wps打开，选中第一列（转录本id），筛选出只含有转录本ID的文件，保存为"noncding_id.txt”，之后将这个文件上传到服务器中。
+noncoding_id.txt文件的部分内容如下：
+MSTRG.1126.1
+MSTRG.1335.1
+MSTRG.1413.1
+MSTRG.1587.1
+MSTRG.1596.1
+MSTRG.1596.2
+MSTRG.1626.1
+MSTRG.1646.1
+MSTRG.1646.2
+MSTRG.168.1
+MSTRG.1687.1
+MSTRG.174.1
+MSTRG.1921.1
+注意：     记录非编码转录本的数量，即cpc<0的数量，写到文章中
+
+下面即是通过这个转录本id到之前“final_seq.fa”文件中，根据id查找对应的序列，生成“cpc.fa”文件
+通过“find_sequence_transcript_id.py”这个python脚本，内容如下
+
+#-*-coding:utf-8-*-
+
+with open('/public/home/ccli/zhaowenjuan/cpc/cpc.fa','w') as f1:
+    with open('/public/home/ccli/zhaowenjuan/cpc/noncding_id.txt','r') as f2:
+        id_list=[line.strip() for line in f2.readlines()]
+        with open('/public/home/ccli/zhaowenjuan/cpc/final_seq.fa','r') as f3:
+            big_list=[]
+            for line in f3:
+                if line.startswith('>'):
+                    tem1 = line.split()[0]
+                    tem2 = tem1.split(">")[1]
+                    big_list.append(tem2 + ':')
+                else:
+                    big_list.append(line)  #['MSTRG.1007.1:', 'AAAAA\n', 'MSTRG.1008.1:', 'BBBBB\n',…]
+            bigger_list = ''.join(element for element in big_list)  #MSTRG.1007.1:AAAAA 下一行MSTRG.1008.1:BBBBB…
+            biggest_list = bigger_list.split('\n')  #['MSTRG.1007.1:AAAAA', 'MSTRG.1008.1:BBBBB',…]
+        zidian = {}
+        for i in biggest_list:
+            i=i.strip()
+            if not len(i):
+                continue
+            zidian[i.split(':')[0]]= i.split(':')[1]  #{'MSTRG.1012.1': 'CCCCC', 'MSTRG.1007.1': 'AAAAA',……}
+        for eachkey in zidian.keys():
+            if eachkey in id_list:
+                f1.write('>'+eachkey+'\n'+zidian[eachkey]+'\n') 
+结果得到cpc.fa”文件部分内容如下：
+>MSTRG.32253.1
+AAGTAAACCGAGCTCTTCTGTTTCTTAATTGTTCTTAACAGGTGCTCCATGACACATCTTGGGCAAAATCAGCCTTTAGCTGCCTACAACTGGTCTAAGTGCCAAGTTGGTAGCCCTGGGAGTGAGATAGGATTGAGATTCTGCTGTTCCAGATCCTGGTATTCCGAGAGCCAGGAGTGCATCAGGAGATGTACTTCACTGTTTGCTCAAGTCTCCAGTGATTATTAACAAGACAGAACTTCCCACCTGCCTGGGATGGAGCGGTTCAGGTACTACAAGTACACCAAACCCAGAGCATCATCCTCTCCTGCCTGCGCCTTCCTGAACTGAATGAAATCTGAGCAAAAATATGTTGGAACCACATAGCCGGCTCTGCTCTTTATCAGGACTATGCATAACTGCAGAAGGGTAAGGGGCAAAGGCTTGAGGGAAAAGGTGAAAACAGGCCTTGTCTGCAACCTGACTATATGCCCCTTTCCAGGAACCAGGCCTTGACATCGGGCAAATGGCAGCTCTGAAATGATCTTTCGGGTCCATGTAGTGCCCTCTGAAGGAAACCCACCAATCTTTTCTCTGCTTATGTGTCTGTATTTACAGCAGAAAGATCTGACTCAGCGTTCCCATAGTGACACAACAAGATTGGCAGCATCTCTGCAGTGCCAGGATGCAGGTTCGATCCTTGGCCTGGCACAGTGGGTTAAAGGCTCTGGTATTGCCACAGCTGTGGTATATGTCACAACTGCAGCTCAGATCTGATCCCTGGCCTGGAAACTCCATATGCAGCAGGGTGAGCAAGAAAGAAAGAAAGAGAGAGAGAGAGAAAGAAAGGAAGGAAAGGAAGGAAGGAAGGAAGATCTGACTCATTTTCTCACCAGGTTGTGGATAGTGACCTTCTGTCTACATGCAACACAGATGAAGACAGCTCAGCTTCGTTATCCAAGTGCTTGGGGAGCAATGCGGAGGGGATGAGTGCCCAGGTCACCCTAGGAATGGCCAGTCTCTAAAATAAAAAGGGGAAAGAGCTGGAAACACAATACCTGGGCAGTGGGAAAATATCATTTCATTGTCTCCTTTTAGATCTCAGATGGATGCATCTCTTATTCTTTGGGCTTCCCTGGCCTCCCCATGCAGACTGCGGAAGAGAGGGAGGACTAAGGTTTATGGGGCGGAGAAGAAACAATCTCACCCCTTCTGGGTTTCATTTCAGAACTTAAGGAACTAAGGAAAGAGCCAAACTTAGCACTTTAAATCACTAGGTGATTTAACACTTTCTGGGTGTTTCTGGGTGACATGACACTTTCTGGGTCTGGGTTTTAGTATATAAGCCCTATGTTTATAGAAAGGCCCTACAAGGTCACTGCTGTTCAGCTGTATATGTGGGCAGGGGTGGCTTAGAGTAGAGCAGGGCCATTCAACTTGAGTTTTATAATAATCAATTTTGGAGCC
+>MSTRG.17295.4
+AACCCCCAAGGCGTGTGGTGTCTATTGTTCTCTATCAATTTTCCCTGCTTATGAATGCAAGCCAACATGTTCCTGAATATATGTCCTGCAACCAGTGGACATCTGAACAGACGAAGAAGGTAAAGAAGCTCTGATATAGAATTTTTCTGCTTCACTTAAAGTTAAAATGGGATTTCTTAAAAGAAATGCCTATGGCATGCAGAAGCTCCTGGGACAAGAATCAAACCTGTGCTACAGCAGCCACCTGAGCCACAGCCATGACAGTGCCAATCTTTAAGCTGCTGAGCCAGCAGGGAACTCCCCTCAGAGATTCTCCAAGACATTTTTAACCAGAACTGAGATTTGCTGCACACTTTCTAAACTTCAAAATCCCAGCTGTTTCTGAAATGAAGAAAATAAGAGAGAAAGAGAAAGCAGCTTTTCATGATCACAAGAATATGTCCAAAGCAACTAAAACTGTTCCCATGAAACTTATTAAATTAATATTAAATATTAAAAAATTCCTAAGTGTTTTTAATGGTTGCTATTTCATAACACCTAT
+>MSTRG.17295.5
+ACCCTTTACATAGGTTGTCAGAGTTATTGATGTTTTTCTGGCATTTTAAAAAATTATGTTTCCATTAATACAGTTTCTATTCATTCCTTGTTAGTAAAGATGATATAATGCACATATGTTCTTCTTAGTCCCTTGATTTGTGTTTTTGATACAATTATATTCATACTTCCTTTCTTTTTTTATTTTTAATTTTTTTGTCTTTTGTCTTTTTTAGGGCCTCAGCCACAGCATATGGAGGTTTCCAGGCTAGGAGTTGATTCAGAGCTGTAGCTGCATGCCTACACCGCAGCCACCGCAATATGGGATCCCAGCTGCGTCTGTGACCTACACTACAGTTCACGGCAATGTGGTATCCTTAACCCACTGAGCAAGGTCAGGGATGGAATCCGCGTCCTCATGGATACCAGTAGGGTTCATTAACCACTGAGCCATGACAGGAACTCCTTTCTGTCTTTCTAAATGAAATAATTACTATGGCTGATTTCAGTTTTATATTTAAAAGGAGTTTTTACTCCCTACAATTTCTCTTCCATCTCCTCAAGTTAGTTTCTATAGTACTGGTCTCTTTATGCTGGTTGTCATAGAACAATTTTATTTGTCATTTGTCTGGATCTGAATTTGCTAAAGTTCTTGGACACTTGCGATCTCTTCTGCTGTTATACATGAAAATTTTCCTAAGAAAGAAAGCAAGGGTTATATTTTCTTGGTCTCAGGATTTGGAGACATCATTTACTGGTTTGAAAGCACTGCCTTCTGGTATAAAAGGCTGTTCCGTTCTGTCTGGACACCAATTAGTGATGCTAAACCCCCAAGGCGTGTGGTGTCTATTGTTCTCTATCAATTTTCCCTGCTTATGAATGCAAGCCAACATGTTCCTGAATATATGTCCTGCAACCAGTGGACATCTGAACAGACGAAGAAGAATATTATGTACAGGAGTTACCATTGTGGCTCAGTAATGACCCTGACTAGTATTCATGAGGACGTGGGTTTGATCCCTGGCCCAACTCAGTGGTGCCTATGGCATGCAGAAGCTCCTGGGACAAGAATCAAACCTGTGCTACAGCAGCCACCTGAGCCACAGCCATGACAGTGCCAATCTTTAAGCTGCTGAGCCAGCAGGGAACTCCCCTCAGAGATTCTCCAAGACATTTTTAACCAGAACTGAGATTTGCTGCACACTTTCTAAACTTCAAAATCCCAGCTGTTTCTGAAATGAAGAAAATAAGAGAGAAAGAGAAAGCAGCTTTTCATGATCACAAGAATATGTCCAAAGCAACTAAAACTGTTCCCATGAAACTTATTAAATTAATATTAAATATTAAAAAATTCCTAAGTGTTTTTAATGGTTGCTATTTCATAACACCT
+>MSTRG.17295.6
+AACCCCCAAGGCGTGTGGTGTCTATTGTTCTCTATCAATTTTCCCTGCTTATGAATGCAAGCCAACATGTTCCTGAATATATGTCCTGCAACCAGTGGACATCTGAACAGACGAAGAAGGCATATGGGTGTGCAACACTGAAGAAAACAGAACATTTTCATAACATCTCAGAGGAGTAAAATGGTTTGAAGAAACAGAAACATAATCTGTCAATGGAGTGGAGCCAGTGACCGCTGGAAGAGACCATTGGTAGAGAAAAGAATCTGGTATATAAAAAGAAAAATAGAATAATCTCCTTTGAAAAGGGATTTTGAGAAGCACATGAGTCTGAGTCAGAGCCACAGAAGAAATCCATCTAAGACAAAACCATAGCCACATATCAAAAGATATTTTTATA
+>MSTRG.17446.1
+CACCCTCTATCTGATGAACAATTAACCTTGTGGCAAAGGAAAAAAGATCTTGTGGGCTTTGTGATGCTGAAAAGCATTAATAAACTTCATGCCTTGGAAAAATTGGAGGAAGAACCCCCACCATATGCAGATGAATTAGATTTGGGAATGAACTGAAGATTTTTTCATGGACTCTGAAGCAGATTATCCAACTCCAGGGCCCCAGTAAACCCTAGTTTATCTCTGCATGAACTTACCTTCTAAAGTGAGAGCCTGCCATTAACCCCTGATGCACTCTGCGCAACCCCAAAGGTTTTGACATTAATACTCAACAACCCCATTTCCTCCAAATTGCTTTGCTTTGCAAATGAAGGTTTCCTT
+>MSTRG.17295.1
+AACCCCCAAGGCGTGTGGTGTCTATTGTTCTCTATCAATTTTCCCTGGAGAACTCCTAAAACTCACCTTTGAATGAGCAGTGGCCTCCGGAAAACACAGTGTAAGGAGAGGCAGTTGGAAATAAGGCACGCAGAATATTTACTGTCCAGAACACACACCCTTCTGTTTTCTAGCTTATGAATGCAAGCCAACATGTTCCTGAATATATGTCCTGCAACCAGTGGACATCTGAACAGACGAAGAAGGATATTCAATAAATATTCTGGAACACTGGAACGTTTGACACTAGGAAGGAAATGGAATGCTGAAGTTCCAAATCTACTTTCAAAATTTCTCATTGCCTATGGCATGCAGAAGCTCCTGGGACAAGAATCAAACCTGTGCTACAGCAGCCACCTGAGCCACAGCCATGACAGTGCCAATCTTTAAGCTGCTGAGCCAGCAGGGAACTCCCCTCAGAAAGGAAGGCAAAAAAGGCAAGAAAGAAGAGAAAGAAGAAAGGAAGAAAAAATTAAGGAAGCTGCTATTTAATGCAATTTGCAGATAGAAATGCATCCTCTTCTCATTTATGAGGGTTATGTCTGAAGCACATGGAAGTTCCAGGCTAGGGGTTGAATTAGAGCTACAGCTGTTGGCCTACATCATAGCCGCAGCAACACTGGATCCAAGCTGAATTTTCAACATATGCCACAGCTTGCAACAACGCCAGATCCTTAACCCACTGGGTGAGGCCGGGGATCCAACATGCATCCTCATGTATCCTAGCCAGGTTCTTAACCCACTGAACCACAACAGGAACTCCTTAAGTGACTCTTAATTGCACATTTTAAAATGGTTAAAATAGTAAATTTTTTATCGTGTGTGTTACACTAAAATTTTAAAAATATATCTTGACAGCCAGGGACCATATGCCTATTGTCTACTTAAGAATTTCTGTATTTGTTTACTGAATTTCATAACCATTTTCTATTGAAAAACTCAAAGTAAGACTATCTCTGCTCCCTCATGATTTATAAAATGAAAGAAATAAATTTTTAAATGGATAAGAGTTAATAATGACAAACTAACAGCAAGTAGTAATTATTCATAACATTTAGGAAACTAGGAAGGAAATTGATGAATGTTGTAGCAGAAAATGTTCTGTCCCCAATCTCTTCTCCAACTTTATGTTAGTAAATTTTGTAGATGTGAGTAGGAAAATTAATTAAGAATCTATTGTCAAGATATTTCATTACCTTTTTTTTTTTTTTTTTTTTTTTGACTACACCTGTTGCATGAAGAAGTTCCCAGGCCAGGGATCAAACTCATGCCACAGCAGCAACCTGGGCCACAGAAGTGACAATGTTGGATTTTTAACCCACTGCACCACAAGAGAATTCCAAAATATTTTATTCTTAAAAGCTAAATTTTAAATTATGCCTTAATTTTCTCAACAGATAGCAGTGACCTTTGTCTAGAAAGAGCTTCAAGAGGCTGGATTCATTCATTATCATTCATCATAAAAGTCTATATCTAACAGTAGAGACCATGAGAAAGTTTCAGCG
+>MSTRG.17295.2
+AACCCCCAAGGCGTGTGGTGTCTATTGTTCTCTATCAATTTTCCCTGCTTATGAATGCAAGCCAACATGTTCCTGAATATATGTCCTGCAACCAGTGGACATCTGAACAGACGAAGAAGTGCCTATGGCATGCAGAAGCTCCTGGGACAAGAATCAAACCTGTGCTACAGCAGCCACCTGAGCCACAGCCATGACAGTGCCAATCTTTAAGCTGCTGAGCCAGCAGGGAACTCCCCTCAGAGATTCTCCAAGACATTTTTAACCAGAACTGAGATTTGCTGCACACTTTCTAAACTTCAAAATCCCAGCTGTTTCTGAAATGAAGAAAATAAGAGAGAAAGAGAAAGCAGCTTTTCATGATCACAAGAATATGTCCAAAGCAACTAAAACTGTTCCCATGAAACTTATTAAATTAATATTAAATATTAAAAAATTCCTAAGTGTTTTTAATGGTTGCTATTTCATAACACCTAT
+>MSTRG.17295.3
+AACCCCCAAGGCGTGTGGTGTCTATTGTTCTCTATCAATTTTCCCTGCTTATGAATGCAAGCCAACATGTTCCTGAATATATGTCCTGCAACCAGTGGACATCTGAACAGACGAAGAAGGTAAAGAAGCTCTGATATAGAATTTTTCTGCTTCACTTAAAGTTAAAATGGGATTTCTTAAAAGAAAGATATTCAATAAATATTCTGGAACACTGGAACGTTTGACACTAGGAAGGAAATGGAATGCTGAAGTTCCAAATCTACTTTCAAAATTTCTCATTGCCTATGGCATGCAGAAGCTCCTGGGACAAGAATCAAACCTGTGCTACAGCAGCCACCTGAGCCACAGCCATGACAGTGCCAATCTTTAAGCTGCTGAGCCAGCAGGGAACTCCCCTCAGAGATTCTCCAAGACATTTTTAACCAGAACTGAGATTTGCTGCACACTTTCTAAACTTCAAAATCCCAGCTGTTTCTGAAATGAAGAAAATAAGAGAGAAAGAGAAAGCAGCTTTTCATGATCACAAGAATATGTCCAAAGCAACTAAAACTGTTCCCATGAAACTTATTAAATTAATATTAAATATTAAAAAATTCCTAAGTGTTTTTAATGGTTGCTATTTCATAACACCTAT
+>MSTRG.17273.1
+GCGTGGATCGTGTGGTTCTGGGAATGCTTTCGCTCGTCCTCTGAGCCTCCTGATTTGTTGGTGCTCGAGTTTTATAGAAGCGCAAGTTATTTTACTCACGGATTCATAAATAGCGTGAGTTTATTCAGTGCTCTGTCATCCGTCAGCTTTTCCAAGTACCACCTGGACAGGTTGGCTTGAAGAAACAGATTATGCCGCTTTCCAACCCTTTGGCAGCTGGTGGAGCATGGGCTATCAGTCACGTAATTGTAATGTCACATCAAGCACACGGAGGAACTATGATTGTGTAGAGCCCATGGACAAGTGATCTCCAAAAGAGCCTTGTGGTATGTAAGATAAAAGTATTGTATCCAGAAAAATACAAATCCATTAGTTGTTACTTACATTATCTGACT
+>MSTRG.28093.1
+GGGCTCCGAGCCCCCACCCCTGGGCCTCAGCGGCCCAGCGCGAGGCTGTCCCGCCGGAAATCGAGTCCGAATTCCAAGTTATTGTCCTTCCTCGCCTAGGGTCTCGCACTGCTTGCGGCTGCCCTCAGGAACCGCTAGTCGCCGTGGCCTCCGATGAGACAGTCGACGTAGTGCCCCATGCCGAGTTTATGGAAAAACCTAGAGACTGCAAAAACAAAAAACAAAAAACCGTATTGCCTTGGAGGAGGGACTTTGAAGAACTGGTGAGCCTGGGGATGAGTCAAGGAGGGAGAAAGAGAGGGTACAGCAGTCTTCTGGATAGACCTGGAAAAGAAGTAGTGCACAGACCAGGATCCCTGACTTCCTGGAGTGTGAGTAAATTTGT
+>MSTRG.31222.2
+TCCACTCACTCAGTTTTGCAGTGAATTTAAACCTCCTCTAAAAACTAAAGTTTACTAATTAAAAAAAAAAATGGAATCCCTAAGGTGCAGACAAAAGAAGAAGCCCCTTCTCATTCCTCAGTGGAGAATGGTCTAGAGATGAACAGGAATGGAAGCTCAAGAAGGCTCTGCAGTAAACTAATGAGAAGTGATAACAGCTCAGACACACGAGTGACAGGGGAACAAGAGAGAAGTGGACAGATTCAAATGTGTTTTGGTGACAGAATGACCCAACTGAAAAGACAAGCAATGACAGCAACAAAATTCTGGAAACTGAAAAGCAGAGGATGTATGCTGGTTTACGTAATACAATGAAGAAAACTGAAAACTAAAGCTGCCATCGGGGAAGCCCCCAAACAAGCTGAGTTGCTCTACAAAACCCCGGCGATGACCAGAATTGGGGATTTTAGGTATCTCCGAAAGTGGGGTTGAAAGTCAAGATGAGAACAAAGAGTCTGGGAGTTCCCGGGTGGCTCAGCAGATTAAGGATCCAGCATGGTCACTGCAGCGGCTCAAGTCACGGCTGTGGTGTGGACTCAATCCCTGGCTCGGGAAACATCCACATGCCGTGGGCACAGTCCAAAAAGAAAAAAAGAAAACAGAAAGTCTGCTTTAAAAGCAGGTAGGCTCTGGCACATCAATATATGTGTGTATAATCAACTATAATAAAAAAATTAAAAACCTACATGTGTGTTAAAAACCTATATATATTACCTACGTTATATGGTATATTATACATACACACATAAATGTATCACTTGTATTAAAATTTAAAAAAAATAAGAAGCTGAAAAAAAAAACTTAAAAAAAAAAGAAAGTCAGATTTCTCCTCATCCTCTCCTCCTGCCCTACCATGAGCTTTCCTAGCCCTGCGCAGTCAGCCTGACTGTCTCTTTGCCACTGGGGCAGAAGCTGTGGGTAGAGAGGGCGAATAGGATGACTGGCCTTGGAACACTACAGTAAAAACGGGAGGGTTAAGTGGACGTCTGTGTGCTGCACGGTGAGATACCCAGCTCCATTCTCTCCCTGTTCTCCCAGGATGCTGCAACCTGCAAGTTTATATATTCTGGGAAAGAGAGAGAATGACTTTTTCTCTGGATACAGGTTTATCTCAGAAGAAAAAACCTAAAGCTACTGACAGGGGCTCCCCACTGAAATGGCTCGGCCAGCCTTTGCAGCAACATGGATGGACCTAGAAATTATCATGCTAATTGAAGTTAATCAGACAGTGAGATACCAACATCTTATGCTATCACTTATATATGTGGAATCTAAAAAAAAGGACACAATGAACTTCTTTGCAGAATAGATACTGACTCACAGGCTTTGAGAAACTTAGGCTTTCCAAAGGAGACAGGTTGGGGGTGGGGTGGGGGAAT
+>MSTRG.31222.3
+TCCACTCACTCAGTTTTGCAGTGAATTTAAACCTCCTCTAAAAACTAAAGTTTACTAATTAAAAAAAAAAATGGAATCCCTAAGGTGCAGACAAAAGAAGAAGCCCCTTCTCATTCCTCAGTGGAGAATGGTCTAGAGATGAACAGGAATGGAAGCTCAAGAAGGCTCTGCAGTAAACTAATGAGAAGTGATAACAGCTCAGACACACGAGTGACAGGGGAACAAGAGAGAAGTGGACAGATTCAAATGTGTTTTGGTGACAGAATGACCCAACTGGGCCATAACTGGGGCACACAGAAGTTCTCAGGCTAGGGGTCAAATCGGAGCTGCCCCAGCCGGTCTACACCACAGCCACAGCAGCTCGGGATCTACACGGCATCTGTCACCTACACCACAGCTCGCAGCAACGCCAGATCCTTAACCCACTGAGCAGGGTCAGGGATTGAACCCGCATCTTCACGAATACCAGTCAGGCTGCACCTGAGGCATATGGAAGTTCCCGGGCTAGAAGCTGAATCCAAGCTGCATCTGTGCCCTACACCACACCTCACGGCAACACAGGATCCTTAACCCACTGAGCAAGGCCAGGGATAAACCCACATCCTCACCAACACTATGTCAGGTTCTTAACCCACTGAGACACAACAAGAACTCCTAATCCAGCCTTTTCCAGGTAGCAAGGATTAATGTGCTTTTACCAATGCTGACATTAACAAATTTGCAGGGATTGTATTATTTGTAATGTATGTAAATAAAGTTTACATCATCTTGCAAAACTTACTGGGCAGATTTTTCTAAAAATGGAAGAGTATAATTAAGATGGTTTGACTTGAAATGTATAGACAAAAACTTGGGCTACCCCCATGTAACTGTGAGTTCTTCTCCTTCAGTGCAGTTGAAAAAACGGAACAAGGAAACACTGAAGTTAATGTCTCTTGGAGCATGATCCATAGACAGAGGCAACATGTAGTGACTCTGAAATTCTTCAACTAAAAAAAAGTTAGGGGGAGTTCCTGTCGTGGAGCAGCAGTTAACGAATCTGACTAGGAACCTCGAGGTTGCGGGTTCGATCCCTGGCCTTGCTCAGTGGGTTAAGGATCCGGCATTGCCGTGAGCTGTGGTGTAGGTTGCAGACGCGGCTCGGATCCCACGTTGCTGTGTCCCTGGCGTTAGGCTGGTGGCTACAGCTCTGATTCAACCCCTAGCCTGGGAACCTCCATATGCTGCGGGAGCGGCCCAAGAAATGGCAAAAAGACCAAAAAAAAAAAAAAAAAAATGTTAGGAGTTCCTGTCATGGCTCAGTGGTTAGAGAACCGGACTAGTATCCATGAGGATGTGGATTCATTCCCTGGCCTTGCTCAGTGGGTTGGGGATCCAGAGTTGCCGTGGGCTGTGGTGTAGGCTGCAGATGCAGCTCAGATCTTACATGGCTGTGGCGTAGGCTGTGGTGTAGGCTGGCGGCTACAGCTCTGATTCGACCCCTAGCCTGGGAACCTCTATATGCCATGGGTGTGGCCCTAAAAAAGACAAACGACCAAAAAAAAATTTAATAGACTATATATCTTAGAGCAAAATTCAGTGGAAGGTCCAGAGATTGCCCACAAACCCTCTCCCTCCACAGACACAGCCTTCCCCATTGTCAACAACCCACTACCCACCAGAATGCTACGTTTGTTACAATTGCTGAACCTACATTGACACATGGTTATCACTCATGGTCCAGCATTTTCCTTAGGGTTCATTTTGTGGGTTTGGACAAATGTGTAATGAATGATATGTGGTCATCAATATAGTATCATACAGAAGAATTTCACTGATTAAACAAATCCTCTGTGCTCTGCCTGCCCACCCCACCCACCACCCCTAATCCCTGACAACCACTGATCTTTGGACTGGTTCCATAACTTTCCAGAATGGAAACTGGAATTGGAATTATACAGTTATGTTGCCTTTTCCGATTGGCTTCTTTGGCTTAGTAATATGCATTTTACATTCCTGCATGTCTTTTCATGGATCAATAGCTCCATATCTCTGTAATTGGAAACCAAAATAAAAAATCAGAAGAGCCCTGTGATTTATGATCTATCTGCTTTCCAATGGTCCAGTCCATTTGACATAATTCAGGATGAATTTGAGACACTTGTAATTCATTTATTCACTCACCATCAACATTTATTGAGCATCTCTATGTACAAGGCACTGGGGCACTGGGCTAGGTACCAACATATAGTATATGGCAGCAAAAGAGATTGATACAATGTTGGTCTTCATTGAACTTCCATTCCAGTAGAAGGGTCAGACACTAAGCAAATAAGTAAGCAATACAGAAAAACAAATACCTGAGCATTTCTCTTTTTCTCTCTCTTTTCATTTCTTTCTTCCTTCCTTTATCCCTTCGACATTTGCATTTGAGCTATTTTTCAAGCGTTGACGATAAGGAGCCAGGAGCCTGTCATTTCTCATCTGCTGTAGCCTCTCAGGAAGACCTTGGGCAACTTACTTTCCCGCTTAGGCATTTTCCCTGGCCTGTAAAATGAAGTTGACAATCCCTGCTTCCTCCATAGTTGGGAAGAACAAATAAAAGTTGTGAACTTGACTTAAAAGCCTAATCATACCTTCAATTTGCCAGCCGGAGTTGTGAGATTAGAATGCCTTTAGATGTCTTATCAACTTAAAACGCATATTTATGTACACGCGATTCTGTTCAAGCTCCTTAAACACCCAGTGGGGCAGCAATACTGTTTTTCCCTCCTCATGGCCTGGACCACAGGGCAAGGCAGAGCAAGCTGCTCTTTGTGTTTTATCTCGGCAGTGCACCTTTGGGAGAGAAAATCACAGCCCCGAGTGTCCTTAATTACCTTTGCAATTTATGTGAATAAATGGATCTTTTTGCGGCCTGTGAAAAGAAGAAAACACACATGTGAGAGACAGCTAATTTCAAGCCTGTAAGGCAAATTTGGAAACTTTAAAAACAGAGTTACATAACATAAAATTTATTGGCGGATCTGCCTTCATTTTGTTTCTGAAATAGCTGGAGAAATGATTCCAGAGAAAAATCATCTATTAAGTGAATTTTCAAAGCCCACAACTTCTTTGATTTAGTTTCTAGGAAGTAAACATCCTTCTGAAATTT
+>MSTRG.31876.1
+TGTGACAGCCCCGGGACATCCCCTTGGCTGGCTCTGAGACATTTTCCACCACCGCAGGGCGGAGGATACTGGGACTGTTGTGAGGATGAAAGAAGTGAGTGTGTATAAAGTCCTTGGAAGAGACAAGCTGGGAGTTCCCGTCATGGCTCAGCGGTTAATGAACCCTACTGGGATCCATGAAGATGTGGGTTCGATCCCTGGCCTTGCTCAGTGGGTTAAGGATCTGGTGTTGCCATGAGCTGTGCTATAGGTTGCAGATGTGGCTCCGATCCTGCGTTGCTGCGGCTGTGGCGTAGGCCAGTGGCTACAGAATTAAAGTACTTG
+>MSTRG.31222.1
+TCCACTCACTCAGTTTTGCAGTGAATTTAAACCTCCTCTAAAAACTAAAGTTTACTAATTAAAAAAAAAAATGGAATCCCTAAGGTGCAGACAAAAGAAGAAGCCCCTTCTCATTCCTCAGTGGAGAATGGTCTAGAGATGAACAGGAATGGAAGCTCAAGAAGGCTCTGCAGTAAACTAATGAGAAGTGATAACAGCTCAGACACACGAGTGACAGGGGAACAAGAGAGAAGTGGACAGATTCAAATGTGTTTTGGTGACAGAATGACCCAACTGGGCCATAACTGGGGCACACAGAAGTTCTCAGGCTAGGGGTCAAATCGGAGCTGCCCCAGCCGGTCTACACCACAGCCACAGCAGCTCGGGATCTACACGGCATCTGTCACCTACACCACAGCTCGCAGCAACGCCAGATCCTTAACCCACTGAGCAGGGTCAGGGATTGAACCCGCATCTTCACGAATACCAGTCAGAAAAGACAAGCAATGACAGCAACAAAATTCTGGAAACTGAAAAGCAGAGGATGTATGCTGGTTTACGTAATACAATGAAGAAAACTGAAAACTAAAGCTGCCATCGGGGAAGCCCCCAAACAAGCTGAGTTGCTCTACAAAACCCCGGCGATGACCAGAATTGGGGATTTTAGGTATCTCCGAAAGTGGGGTTGAAAGTCAAGATGAGAACAAAGAGTCTGGGAGTTCCCGGGTGGCTCAGCAGATTAAGGATCCAGCATGGTCACTGCAGCGGCTCAAGTCACGGCTGTGGTGTGGACTCAATCCCTGGCTCGGGAAACATCCACATGCCGTGGGCACAGTCCAAAAAGAAAAAAAGAAAACAGAAAGTCTGCTTTAAAAGCAGGTAGGCTCTGGCACATCAATATATGTGTGTATAATCAACTATAATAAAAAAATTAAAAACCTACATGTGTGTTAAAAACCTATATATATTACCTACGTTATATGGTATATTATACATACACACATAAATGTATCACTTGTATTAAAATTTAAAAAAAATAAGAAGCTGAAAAAAAAAACTTAAAAAAAAAAGAAAGTCAGATTTCTCCTCATCCTCTCCTCCTGCCCTACCATGAGCTTTCCTAGCCCTGCGCAGTCAGCCTGACTGTCTCTTTGCCACTGGGGCAGAAGCTGTGGGTAGAGAGGGCGAATAGGATGACTGGCCTTGGAACACTACAGTAAAAACGGGAGGGTTAAGTGGACGTCTGTGTGCTGCACGGTGAGATACCCAGCTCCATTCTCTCCCTGTTCTCCCAGGATGCTGCAACCTGCAAGTTTATATATTCTGGGAAAGAGAGAGAATGACTTTTTCTCTGGATACAGGTTTATCTCAGAAGAAAAAACCTAAAGCTACTGACAGGGGCTCCCCACTGAAATGGCTCGGCCAGCCTTTGCAGCAACATGGATGGACCTAGAAATTATCATGCTAATTGAAGTTAATCAGACAGTGAGATACCAACATCTTATGCTATCACTTATATATGTGGAATCTAAAAAAAAGGACACAATGAACTTCTTTGCAGAATAGATACTGACTCACAGGCTTTGAGAAACTTAGGCTTTCCAAAGGAGACAGGTTGGGGGTGGGGTGGGGGAAT
+>MSTRG.2998.2
+
+注意：此结果与final_seq.fa’文件结果相似，区别是不含正负链，和编码基因，后续hmmer还要用到
+
+
+#hmmer
+目的：丢弃含有任何已知蛋白质编码结构域的转录本
+用途：1、对于一条未知的序列在蛋白数据中寻找比对
+       2、自动注释蛋白结构域
+	   3、在数据库中寻找已有家族的相似序列
+下面就是在hmmer中，比对蛋白质结构域（Domain search space  (domZ)），找到结构域=0的转录本，即不含已知蛋白结构域的转录本。
+第一步是将“cpc.fa”文件先从核苷酸序列转化成蛋白质序列，之后跟这个“Pfam-A.hmm”蛋白质数据库比对
+
+新建文件夹hmmer,并将cpc文件夹里的“cpc.fa ”文件复制到此文件夹中
+脚本transeq_hmmscan.sh内容如下：
+#!/bin/sh
+#PBS -N hmmer
+#PBS -l nodes=1:ppn=8
+#PBS -l mem=1gb
+#PBS -q batch
+
+echo start at time `date +%F'  '%H:%M`
+
+cd /public/home/ccli/zhaowenjuan/hmmer                                 ----------文件储存路径
+transeq cpc.fa protein_cpc.fa -frame=6     #在正向第6帧翻译核酸序     -------transeq 指软件，cpc.fa 指文件 ，生成protein_cpc.fa文件
+
+hmmscan -o cpc_hmmer.out -E 0.00001 --noali --cpu 8 \
+/public/home/ccli/software/hmmer-3.1b2-linux-intel-x86_64/binaries/Pfam-A.hmm protein_cpc.fa       
+
+echo finish at time `date +%F'  '%H:%M`
+#-E 0.00001  设定 E_value 阈值，推荐设置为 1e-5 E值越小，代表高的置信度
+#--noali 指在输出结果中不包含比对信息
+#--cpu 8 表示支持8线程运行的cpu
+
+# hmmscan :: search sequence(s) against a profile database
+# HMMER 3.1b2 (February 2015); http://hmmer.org/
+# Copyright (C) 2015 Howard Hughes Medical Institute.
+# Freely distributed under the GNU General Public License (GPLv3).
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# query sequence file:             protein_cpc.fa
+# target HMM database:             /public/home/ccli/software/hmmer-3.1b2-linux-intel-x86_64/binaries/Pfam-A.hmm
+# output directed to file:         cpc_hmmer.out
+# show alignments in output:       no
+# profile reporting threshold:     E-value <= 1e-05
+# number of worker threads:        8
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+结果生成 “cpc_hmmer.out”文件，下面是这个文件最后中的部分内容
+Query:       MSTRG.4613.1_1  [L=1565]                                                 ------------- 指待比对转录本id
+Scores for complete sequence (score includes all domains):
+   --- full sequence ---   --- best 1 domain ---    -#dom-
+    E-value  score  bias    E-value  score  bias    exp  N  Model    Description
+    ------- ------ -----    ------- ------ -----   ---- --  -------- -----------
+
+   [No hits detected that satisfy reporting thresholds]
+
+
+Domain annotation for each model:
+
+   [No targets detected that satisfy reporting thresholds]
+
+
+Internal pipeline statistics summary:
+-------------------------------------
+Query sequence(s):                         1  (1565 residues searched)                    -------Query 代表输入序列
+Target model(s):                       16306  (2860830 nodes)
+Passed MSV filter:                       286  (0.0175396); expected 326.1 (0.02)
+Passed bias filter:                      139  (0.00852447); expected 326.1 (0.02)
+Passed Vit filter:                         6  (0.000367963); expected 16.3 (0.001)
+Passed Fwd filter:                         0  (0); expected 0.2 (1e-05)
+Initial search space (Z):              16306  [actual number of targets]
+Domain search space  (domZ)               0  [number of targets reported over threshold]   ------此行是结构域=0，是我们需要的转录本
+# CPU time: 0.88u 1.34s 00:00:02.22 Elapsed: 00:00:21.67
+# Mc/sec: 206.61
+//
+
+注意:此步需要记录no pfam hit 的转录本数，写到文章里
+
+第二步筛选符合要求的转录本ID，
+脚本“hmmer_result_extract_hisat_2.sh”文件部分内容如下：
+#!/bin/sh
+#PBS -N hmmer-result-extraction
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=1gb
+#PBS -q batch
+
+#echo start at time `date +%F'  '%H:%M`
+
+cd /public/home/ccli/zhaowenjuan/1/hmmer/deal_with_hmmer_out
+
+grep "Query:" cpc_hmmer.out | cut -d " " -f 8 >query_id_six.txt。      ---------选择cpc_hmmer.out文件中 Query: 这样的行，以空格符“”为分隔符，第8列（这里就是数字1的那一列），输入到query_id_six.txt文件
+grep "domZ" cpc_hmmer.out | cut -d " " -f 20 >domain_result.txt        ---------选择文件中 domZ 这样的行，以空格符“”为分隔符，第20列（这里就是数字0的那一列），输入到domain_result.txt文件
+paste query_id_six.txt domain_result.txt >query_six_domain.txt。       ---------将query_id_six.txt 和domain_result.txt两个文件内容合并到query_six_domain.txt文件
+awk -F"[\t]" '$2!=0 {print $1}' query_six_domain.txt >sig_hit_six.txt  ---------将query_six_domain.txt文件中以箭头表示分隔符，从箭头的左边开始算第1列，选择第2列不等于0的行，打印输入到“sig_hit_six.txt”文件
+cut -d "_" -f 1 sig_hit_six.txt |uniq >sig_hit.txt。                    --------将文件中“_"为分隔符，选择第1列，。。。输出sig_hit.txt
+
+#grep -v -w -f sig_hit.txt  cpc_id.txt >cpc_hmmer_id.txt
+#awk -F '' '{if(ARGIND==1) {val[$0]} else {if($0 not in val) print $0}}' sig_hit.txt cpc_id.txt > cpc_hmmer_id.txt
+sort N_noncding_id.txt sig_hit.txt sig_hit.txt | uniq -u >cpc_hmmer_id.txt       ------------从cpc中将noncoding_id.txt复制过来
+#echo finish at time `date +%F'  '%H:%M`
+
+#cut 如果文件中包含分隔符，要查看第一个字符的内容，那就使用(-d 符号 -f n)来进行查看了，-d后接分隔符，-f后接第几个字符
+最后结果得到cpc_hmmer_id.txt文件，结果没看
+
+注意：还有一步要记录数字，不知道在哪里
+
+第三步，将cpc_hmmer_id.txt文件中ID与原来CPC中的“cpc.fa”文件比对去找序列，得到“cpc_hmmer.fa”文件
+   脚本内容如下：
+#-*-coding:utf-8-*-
+
+with open('/public/home/ccli/zhaowenjuan/hmmer/deal_with_hmmer_out/cpc_hmmer.fa','w') as f1:
+    with open('/public/home/ccli/zhaowenjuan/1/hmmer/deal_with_hmmer_out/cpc_hmmer_id.txt','r') as f2:
+        id_list=[line.strip() for line in f2.readlines()]
+        with open('/public/home/ccli/zhaowenjuan/1/hmmer/cpc.fa','r') as f3:
+            big_list=[]
+            for line in f3:
+                if line.startswith('>'):
+                    tem1 = line.split()[0]
+                    tem2 = tem1.split(">")[1]
+                    big_list.append(tem2 + ':')
+                else:
+                    big_list.append(line)  #['MSTRG.1007.1:', 'AAAAA\n', 'MSTRG.1008.1:', 'BBBBB\n',…]
+            bigger_list = ''.join(element for element in big_list)  #MSTRG.1007.1:AAAAA 下一行MSTRG.1008.1:BBBBB…
+            biggest_list = bigger_list.split('\n')  #['MSTRG.1007.1:AAAAA', 'MSTRG.1008.1:BBBBB',…]
+        zidian = {}
+        for i in biggest_list:
+            i=i.strip()
+            if not len(i):
+                continue
+            zidian[i.split(':')[0]]= i.split(':')[1]  #{'MSTRG.1012.1': 'CCCCC', 'MSTRG.1007.1': 'AAAAA',……}
+        for eachkey in zidian.keys():
+            if eachkey in id_list:
+                f1.write('>'+eachkey+'\n'+zidian[eachkey]+'\n') 
+
+结果得到“cpc_hmmer.fa”文件
+
+#blast
+全称（Basic Local Alignment Search Tool）即"基于局部比对算法的搜索工具"
+运行方式是先用目标序列建数据库（database，里面的每一条序列称为subject），数据库NCBINR and UniRef90 database
+然后用待查的序列（称为query）在database中搜索，每一条query与database中的每一条subject都要进行双序列比对，从而得出全部比对结果
+blastx核酸序列对蛋白库的比对，先将核酸序列翻译成蛋白序列（根据相位可以翻译为6种可能的蛋白序列），然后再与蛋白库做比对。
+blastn核酸序列对核酸库的比对，直接比较核酸序列的同源性。
+tblastn：蛋白序列对核酸库的比对，将库中的核酸翻译成蛋白序列，然后进行比对。
+tblastx：核酸序列对核酸库在蛋白级别的比对，将库和待查序列都翻译成蛋白序列，然后对蛋白序列进行比对。
+数据如果比较多，一次跑速度比较慢，可将它分成多份一次跑比较快，大概用了两天
+
+脚本“split_file.sh”分“cpc_hmmer.fa”文件。
+echo start at time `date +%F'  '%H:%M`
+
+cd /public/home/ccli/huangziying/blast
+
+cat cpc_hmmer.fa | sed -n "1,500p" > cpc_hmmer_1.fa
+
+cat cpc_hmmer.fa | sed -n "501,1000p" > cpc_hmmer_2.fa
+
+cat cpc_hmmer.fa | sed -n "1001,1500p" > cpc_hmmer_3.fa
+
+cat cpc_hmmer.fa | sed -n "1501,2000p" > cpc_hmmer_4.fa
+
+cat cpc_hmmer.fa | sed -n "2001,2351p" > cpc_hmmer_5.fa
+
+echo finish at time `date +%F'  '%H:%M`
+上面分文件没做，直接跑的脚本首先将“cpc_hmmer.fa”文件复制到blast文件夹中
+再用下面的"blast_sqsub5.bash"脚本开始跑blast，得到5个“cpc_hmmer_blast_1.out”文件
+#!/bin/sh
+#PBS -N blast
+#PBS -l nodes=1:ppn=8
+#PBS -l mem=1gb
+#PBS -q batch
+
+echo start at time `date +%F'  '%H:%M`
+
+cd /public/home/ccli/huangziying/blast
+
+sqsub -j cpc_hmmer_1 -t 4 -c "blastx -db /public/home/ccli/software/cpc-0.9/data/prot_db -query cpc_hmmer_1.fa \
+      -strand both -num_threads 8 -evalue 0.00001 -outfmt '7 qseqid evalue'  -out cpc_hmmer_blast_1.out"
+    
+sqsub -j cpc_hmmer_2 -t 4 -c "blastx -db /public/home/ccli/software/cpc-0.9/data/prot_db -query cpc_hmmer_2.fa \
+      -strand both -num_threads 8 -evalue 0.00001 -outfmt '7 qseqid evalue'  -out cpc_hmmer_blast_2.out"
+    
+sqsub -j cpc_hmmer_3 -t 4 -c "blastx -db /public/home/ccli/software/cpc-0.9/data/prot_db -query cpc_hmmer_3.fa \
+      -strand both -num_threads 8 -evalue 0.00001 -outfmt '7 qseqid evalue'  -out cpc_hmmer_blast_3.out"
+    
+sqsub -j cpc_hmmer_4 -t 4 -c "blastx -db /public/home/ccli/software/cpc-0.9/data/prot_db -query cpc_hmmer_4.fa \
+      -strand both -num_threads 8 -evalue 0.00001 -outfmt '7 qseqid evalue'  -out cpc_hmmer_blast_4.out"
+    
+sqsub -j cpc_hmmer_5 -t 4 -c "blastx -db /public/home/ccli/software/cpc-0.9/data/prot_db -query cpc_hmmer_5.fa \
+      -strand both -num_threads 8 -evalue 0.00001 -outfmt '7 qseqid evalue'  -out cpc_hmmer_blast_5.out"
+    
+echo finish at time `date +%F'  '%H:%M`
+
+#-strand both
+#-num_threads 8 代表线程数
+#-outfmt 5or6or7 参数，“5”输出XML格式，“6”输出TAB分割格式，“7”输出带注释的TAB分割格式
+#blast-2.8版本可支持用NCBI自带代码分割的NR子库的索引作为比对的库，使用比较方便
+
+将原来分开的文件合并到一起，在终端输入命令：cat 文件1 文件2 文件3 > 合并文件名   得到完整的.out”文件
+
+3注意：此时记录No nr and uniref database hit倒数第二步的转录本数
+
+将Blast得到的.out文件按照下面的脚本内容进行：
+#!/bin/sh
+#PBS -N blast
+#PBS -l nodes=1:ppn=8
+#PBS -l mem=1gb
+#PBS -q batch
+
+echo start at time `date +%F'  '%H:%M`
+
+cd /public/home/ccli/zhaowenjuan/blast
+
+sqsub -j cpc_hmmer_1 -t 4 -c "cat cpc_hmmer_blast.out | grep "Fields" -B 2 | grep "Query" > Fields_Query_1.txt
+cut -d ":" -f 2 Fields_Query_1.txt > Fields_Query_2.txt
+cut -d " " -f 2 Fields_Query_2.txt > Fields_Query_3.txt
+sort cpc_hmmer_id.txt Fields_Query_3.txt Fields_Query_3.txt | uniq -u >0_hit_transcriptsID.txt"
+
+echo finish at time `date +%F'  '%H:%M`
+
+#各行代码含义：
+#把cpc_hmmer_fa.out文件中hit=/不等于0的转录本的ID提出来，这个代码得到的是# Query: MSTRG.31224.1 # Query: MSTRG.31224.3；
+#cat cpc_hmmer_fa.out | grep "Fields" -B 2 | grep "Query" > Fields_Query_1.txt  指把 MSTRG.31224.3这种形式的提出来；
+#cut -d ":" -f 2 Fields_Query_1.txt > Fields_Query_2.txt
+#把 MSTRG.31224.3这种形式中的 （带空格）去掉，得到MSTRG.31224.3这种格式,这种转录本是我们不要的，因为它在数据库中匹配到了，我们要的是匹配不到的；
+#cut -d " " -f 2 Fields_Query_2.txt > Fields_Query_3.txt
+#把cpc_hmmer_id.txt中与数据库匹配到的转录本删除掉；
+#sort cpc_hmmer_id.txt Fields_Query_3.txt Fields_Query_3.txt | uniq -u >0_hit_transcriptsID.txt
+
+最后输出这个0_hit_transcriptsID.txt文件即是我们最后得到的lincRNA的转录本id
+2注意：此时的转录本为FPKM>0的转录本数，写到文章里
+
+差异LincRNA的筛选
+将Ballgown里6个t_data.ctab文件下载到本地（注意每个文件名改一下，防止文件被互相覆盖），
+WPS表格打开，由于6个文件里的t_name都一样，所以将这6个文件的FPKM那一列相加，并筛选出总和大于0.5的所对应的转录本ID（即t_name那一列）
+（FPKM总和相加的快速方法如下：在第一行求和后，右下角变成黑色十字，左键双击即可）
+然后将此转录本ID与0_hit文件里的转录本ID取交集，百度搜索venny（维恩图）在线，将转录本复制到框里，自动取交集，并将有交集的转录本保存下来
+
+1注意：此时得到的lincRNA就是文章中的putative lincRNAs,流程的结果数据
+至此，前期在服务器中的工作结束，下面就是具体的分析，在本地进行。
+
+下面我们在R中进行差异分析
+Deseq2包鉴定实验组之间差异表达的lincRNA
+1、将htseq里的6个count文件下载到本地，因为是3实验组，需要进行两两比较，就将这个三类样品的.count文件分别保存到两两比较的三个文件夹中
+例如保存文件名为：wei_1.count wei_2.count wei_3.count和yor_1.count  yor_2.count  yor_2.count
+注意：文件里最后几行删除，两组文件命名中不要有重字母，按照cros-pure或wei-yor形式命名
+采用差异表达的脚本用Rstudio打开方式打开
+脚本内容如下：
+library("DESeq2")
+setwd("E:\\实验室\\生物信息课程\\03RNA-seq\\L7")------------------------------------设置工作路径，到我们之前放.count文件的地址中
+counts_dir="E:\\实验室\\生物信息课程\\03RNA-seq\\L7"--------------------------------同上
+counts_Files <- grep("\\.count",list.files(counts_dir),value=TRUE)        ------读取以.count结尾的文件
+counts_group <- sub("(\\w)\\d.*","\\1",counts_Files)                      -------(\\w)\\d.*文件名的格式，识别出文件名里带w和d的文件
+
+counts_Table <- data.frame(sampleName = counts_Files,           
+                         fileName = counts_Files,
+                         group=counts_group,
+                         condition = counts_group)
+counts_HTSeq <-
+  DESeqDataSetFromHTSeqCount(                                      ------------ 此部分不改   
+    sampleTable = counts_Table,
+    directory = counts_dir,
+    design = ~ condition
+  )
+
+#可视化
+library("pheatmap")
+nt <- normTransform(counts_HTSeq) # defaults to log2(x+1)
+pheatmap(assay(nt), cluster_rows=T, show_rownames=FALSE,
+         cluster_cols=T)
+
+rld <- rlog(counts_HTSeq, blind=FALSE)
+pheatmap(assay(rld), cluster_rows=T, show_rownames=FALSE,
+         cluster_cols=T)
+
+vsd <- varianceStabilizingTransformation(counts_HTSeq, blind=FALSE)
+pheatmap(assay(vsd), cluster_rows=T, show_rownames=FALSE,
+         cluster_cols=T)
+
+plotPCA(nt, intgroup=c("condition"))
+plotPCA(rld, intgroup=c("condition"))
+plotPCA(vsd, intgroup=c("condition"))
+
+
+
+#过滤掉在六个样品中都不表达的，只留下至少在一个样品中表达的
+dds <- counts_HTSeq[ rowSums(counts(counts_HTSeq)) > 1, ]
+
+#计算差异
+dds_DE <- DESeq(dds)
+
+#展示结果
+res_DE <- results(dds_DE,alpha=0.05,contrast=c("condition","wei_","yor_"))--------两实验组分别有3个重复，使系统识别出前面的名称
+                                                                           
+                                                                           
+                                                                    
+summary(res_DE)
+
+#保存结果
+resOrdered <- res_DE[order(res_DE$padj),]
+write.csv(as.data.frame(resOrdered),
+          file="C_S.csv")                              ------保存文件名
+
+
+N=18807
+n=321
+M=74
+m=11
+phyper(n-m,M, N-M, n, lower.tail=FALSE)
+我们目前得到了.csv文件后，.csv文件中保存的是基因id，我们需要的是最后一列padj的信息，这个是矫正过的p值，我们需要筛选小于0.05的基因id筛选出来。
+将筛选过padj <0.05,fold change(绝对值)>1的数字ID与putative_transcriptsID.txt文件中的ID再取交集，即为差异表达的基因DEG和DELincRNA
+
+方法一
+第一步 将我们的“putative_transcriptsID.txt”中的转录本id下载到本地，由于转录本ID格式与基因ID格式不同，需先将转录本ID转换为基因ID
+(转录本id例如MSTRG.27264.1，比基因ID例如MSTRG.27264多了个“.”分隔符)转变方法是，在excel表格中将转录本id所在的列按照"."的规则分列
+
+
+
+
+
+
